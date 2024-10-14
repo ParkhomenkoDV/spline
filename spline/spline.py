@@ -41,15 +41,16 @@ class Spline:
                  0: 'по боковым граням',
                  +1: 'по наружному диаметру'}
 
-    def __init__(self, gost: int, centering: int):
-        assert gost in Spline.TYPES.keys()
+    def __init__(self, standard: int | np.integer, centering: int):
+        assert standard in Spline.TYPES.keys()
         assert centering in Spline.CENTERING.keys()
 
-        self.gost = gost
+        self.__standard = standard
         self.centering = centering  # вид центрирования
 
-    def __slit_1139(self):
-        pass
+    @property
+    def standard(self):
+        return self.__standard
 
     @property
     def average_diameter(self) -> float:
@@ -61,12 +62,15 @@ class Spline:
     def tension(self):
         return 2 * T * k / (d_ * z * h * l)
 
-    def t(self, max_tension, moment, length, safety=1) -> tuple[dict[str: float], ...]:
+    def fit(self, max_tension: int | float | np.number,
+            moment: int | float | np.number, length: int | float | np.number,
+            safety: int | float | np.number = 1) -> tuple[dict[str: float], ...]:
+        """Подбор шлицевого соединения"""
         result = list()
         for d, D, z in zip():
             d_ = (d + D) / 2
             tension = 2 * moment * k / (d_ * z * h * length)
-            if tension <= max_tension: result.append({'d': d, 'D': D, 'z': z})
+            if tension * safety <= max_tension: result.append({'d': d, 'D': D, 'z': z})
         return tuple(result)
 
     def show(self, **kwargs):
