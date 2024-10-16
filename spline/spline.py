@@ -11,12 +11,8 @@ HERE = os.path.dirname(__file__)
 sys.path.append(HERE)
 
 gost_1139_light_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Легкая серия')
-print(gost_1139_light_series)
 gost_1139_middle_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Средняя серия')
-print(gost_1139_middle_series)
 gost_1139_heavy_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Тяжелая серия')
-print(gost_1139_heavy_series)
-
 gost_1139 = pd.concat([gost_1139_light_series, gost_1139_middle_series, gost_1139_heavy_series], axis=0)
 
 REFERENCES = MappingProxyType({
@@ -31,6 +27,7 @@ REFERENCES = MappingProxyType({
 
 class Spline:
     """Шлицевое соединение"""
+    __slots__ = ('__standard', '__n_teeth', '__d', '__D', '__module', '__chamfer')
 
     TYPES = {1139: 'прямобочные шлицевые соединения',
              6033: 'шлицевые соединения с эвольвентными зубьями',
@@ -41,36 +38,67 @@ class Spline:
                  0: 'по боковым граням',
                  +1: 'по наружному диаметру'}
 
-    def __init__(self, standard: int | np.integer, centering: int):
+    def __init__(self, standard: int | np.integer, centering: int, **parameters):
         assert standard in Spline.TYPES.keys()
         assert centering in Spline.CENTERING.keys()
 
         self.__standard = standard
-        self.centering = centering  # вид центрирования
+        # self.centering = centering  # вид центрирования
+
+        for parameter, value in parameters.items():
+            setattr(self, f'__{parameter}', value)
 
     @property
     def standard(self):
         return self.__standard
 
     @property
+    def n_teeth(self):
+        return self.__n_teeth
+
+    @property
+    def d(self):
+        return self.__d
+
+    @property
+    def D(self):
+        return self.__D
+
+    @property
+    def module(self):
+        return self.__module
+
+    @property
+    def chamfer(self):
+        return self.__chamfer
+
+    @property
     def average_diameter(self) -> float:
         """Средний диаметр"""
-        return 0.5 * (self.d + self.D) - 2 * self.f
-        return self.D - 1.1 * self.m
-        return self.m * self.z
+        if self.standard == 1139: return 0.5 * (self.d + self.D) - 2 * self.chamfer
+        if self.standard == 6033: return self.D - 1.1 * self.module
+        if self.standard == 100092: return self.module * self.n_teeth
+
+    @property
+    def height(self) -> float:
+        if self.standard == 1139: return (self.D - self.d) / 2 - 2 * self.chamfer
+        if self.standard == 6033: return 0.8 * self.module
+        if self.standard == 100092: return (self.D - self.d) / 2
 
     def tension(self):
         return 2 * T * k / (d_ * z * h * l)
 
-    def fit(self, max_tension: int | float | np.number,
+    @classmethod
+    def fit(cls, standard: int | np.integer,
+            max_tension: int | float | np.number,
             moment: int | float | np.number, length: int | float | np.number,
-            safety: int | float | np.number = 1) -> tuple[dict[str: float], ...]:
+            safety: int | float | np.number = 1, k=1.5) -> tuple[dict[str: float], ...]:
         """Подбор шлицевого соединения"""
         result = list()
-        for d, D, z in zip():
-            d_ = (d + D) / 2
-            tension = 2 * moment * k / (d_ * z * h * length)
-            if tension * safety <= max_tension: result.append({'d': d, 'D': D, 'z': z})
+        for i, row in gost_1139.iterrows():
+            spline = Spline(standard, -1, n_teeth=row['z'], d=row['d'], D=row['D'], chamfer=row['c'])
+            tension = 2 * moment * k / (spline.average_diameter * spline.n_teeth * spline.height * length)
+            if tension * safety <= max_tension: result.append({'d': d, 'D': D, 'z': z, 'safety': 0})
         return tuple(result)
 
     def show(self, **kwargs):
@@ -92,7 +120,7 @@ def test():
         splines.append(Spline(1139, -1))
 
     for spline in splines:
-        pass
+        Spline.fit(spline.standard, 40, 20, 20, 1)
 
 
 if __name__ == '__main__':
