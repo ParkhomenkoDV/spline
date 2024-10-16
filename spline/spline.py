@@ -15,6 +15,8 @@ gost_1139_middle_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_n
 gost_1139_heavy_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Тяжелая серия')
 gost_1139 = pd.concat([gost_1139_light_series, gost_1139_middle_series, gost_1139_heavy_series], axis=0)
 
+gost_6033 = 0
+
 REFERENCES = MappingProxyType({
     1: '''Детали машин: учебник для вузов /
     [Л.А. Андриенко, Д38 Б.А. Байков, М.Н. Захаров и др.]; под ред. О.А. Ряховского. -
@@ -34,7 +36,7 @@ class Spline:
              100092: 'шлицевые соединения треугольного профиля'}
 
     # вид центрирования
-    CENTERING = {-1: 'по внутреннему диаметеру',
+    CENTERING = {-1: 'по внутреннему диаметру',
                  0: 'по боковым граням',
                  +1: 'по наружному диаметру'}
 
@@ -42,58 +44,59 @@ class Spline:
         assert standard in Spline.TYPES.keys()
         assert centering in Spline.CENTERING.keys()
 
-        self.__standard = standard
+        self.__standard: int = int(standard)
         # self.centering = centering  # вид центрирования
 
         for parameter, value in parameters.items():
             setattr(self, f'__{parameter}', value)
 
     @property
-    def standard(self):
+    def standard(self) -> int:
         return self.__standard
 
     @property
-    def n_teeth(self):
+    def n_teeth(self) -> int:
         return self.__n_teeth
 
     @property
-    def d(self):
+    def d(self) -> float:
         return self.__d
 
     @property
-    def D(self):
+    def D(self) -> float:
         return self.__D
 
     @property
-    def module(self):
+    def module(self) -> float:
         return self.__module
 
     @property
-    def chamfer(self):
+    def chamfer(self) -> float:
         return self.__chamfer
 
     @property
     def average_diameter(self) -> float:
-        """Средний диаметр"""
+        """Средний диаметр [1, с.127]"""
         if self.standard == 1139: return 0.5 * (self.d + self.D) - 2 * self.chamfer
         if self.standard == 6033: return self.D - 1.1 * self.module
         if self.standard == 100092: return self.module * self.n_teeth
 
     @property
     def height(self) -> float:
+        """Высота контакта [1, с.127]"""
         if self.standard == 1139: return (self.D - self.d) / 2 - 2 * self.chamfer
         if self.standard == 6033: return 0.8 * self.module
         if self.standard == 100092: return (self.D - self.d) / 2
 
-    def tension(self):
-        return 2 * T * k / (d_ * z * h * l)
+    def tension(self) -> float:
+        return 0  # 2 * T * k / (d_ * z * h * l)
 
     @classmethod
     def fit(cls, standard: int | np.integer,
             max_tension: int | float | np.number,
             moment: int | float | np.number, length: int | float | np.number,
             safety: int | float | np.number = 1, k=1.5) -> tuple[dict[str: float], ...]:
-        """Подбор шлицевого соединения"""
+        """Подбор шлицевого соединения [1, с.126]"""
         result = list()
         for i, row in gost_1139.iterrows():
             spline = Spline(standard, -1, n_teeth=row['z'], d=row['d'], D=row['D'], chamfer=row['c'])
@@ -104,9 +107,9 @@ class Spline:
     def show(self, **kwargs):
         """Визуализация сечения шлица"""
         plt.figure(figsize=kwargs.pop('figsize', (4, 4)))
-        angle = linspace(0, 2 * pi, 360, endpoint=True, dtype='float32')
         plt.plot([0, 0], [-self.D, self.D], color='orange', )
         plt.plot([-self.D, self.D], [0, 0], color='orange', )
+        angle = linspace(0, 2 * pi, 360, endpoint=True, dtype='float32')
         plt.plot(self.d / 2 * cos(angle), self.d / 2 * sin(angle), color='black', ls='solid', linewidth=3)
         plt.plot(self.D / 2 * cos(angle), self.D / 2 * sin(angle), color='black', ls='solid', linewidth=3)
         plt.tight_layout()
@@ -120,7 +123,9 @@ def test():
         splines.append(Spline(1139, -1))
 
     for spline in splines:
-        Spline.fit(spline.standard, 40, 20, 20, 1)
+        fitted_splines = Spline.fit(spline.standard, 40, 20, 20, 1)
+
+        # spline = Spline(spline.standard, )
 
 
 if __name__ == '__main__':
