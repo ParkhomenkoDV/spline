@@ -10,12 +10,19 @@ from matplotlib import pyplot as plt
 HERE = os.path.dirname(__file__)
 sys.path.append(HERE)
 
-gost_1139_light_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Легкая серия')
-gost_1139_middle_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Средняя серия')
-gost_1139_heavy_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Тяжелая серия')
+gost_1139_light_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Легкая серия', )
+gost_1139_middle_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Средняя серия', )
+gost_1139_heavy_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Тяжелая серия', )
 gost_1139 = pd.concat([gost_1139_light_series, gost_1139_middle_series, gost_1139_heavy_series], axis=0)
+gost_1139 = gost_1139.rename(columns={'z': 'n_teeth',
+                                      'b': 'width',
+                                      'd1': 'corner_diameter', 'a': 'corner_width',
+                                      'c': 'chamfer', 'dc': 'delta_chamfer', 'r': 'radius'})
+for column in ('d', 'D', 'width', 'corner_diameter', 'corner_width', 'chamfer', 'delta_chamfer', 'radius'):
+    gost_1139[column] /= 1_000  # СИ
 
-gost_6033 = 0
+gost_6033 = pd.read_excel(os.path.join(HERE, '6033.xlsx'))  # TODO
+print(gost_6033)
 
 REFERENCES = MappingProxyType({
     1: '''Детали машин: учебник для вузов /
@@ -29,7 +36,10 @@ REFERENCES = MappingProxyType({
 
 class Spline:
     """Шлицевое соединение"""
-    __slots__ = ('__standard', '__n_teeth', '__d', '__D', '__module', '__chamfer')
+    __slots__ = ('__standard',
+                 '__n_teeth', '__d', '__D',
+                 '__chamfer', '__width', '__corner_diameter', '__corner_width', '__delta_chamfer', '__radius',
+                 '__module',)
 
     TYPES = {1139: 'прямобочные шлицевые соединения',
              6033: 'шлицевые соединения с эвольвентными зубьями',
@@ -47,8 +57,20 @@ class Spline:
         self.__standard: int = int(standard)
         # self.centering = centering  # вид центрирования
 
-        for parameter, value in parameters.items():
-            setattr(self, f'__{parameter}', value)
+        if standard == 1139:
+            for parameter in ('n_teeth', 'd', 'D'):
+                assert parameters.get(parameter, None) is not None, f'parameter {parameter} is None'
+            n_teeth, d, D = parameters['n_teeth'], parameters['d'], parameters['D']
+            for _, row in gost_1139.iterrows():
+                if n_teeth == row['n_teeth'] and d == row['d'] and D == row['D']:
+                    for key, value in row.to_dict().items():
+                        setattr(self, f'_{self.__class__.__name__}__{key}', value)
+                    break
+            else:
+                raise Exception(
+                    f'n_teeth={parameters["n_teeth"]}, d={parameters["d"]}, D={parameters["D"]} not in GOST {standard}')
+        elif standard == 6033:
+            pass
 
     @property
     def standard(self) -> int:
@@ -88,20 +110,25 @@ class Spline:
         if self.standard == 6033: return 0.8 * self.module
         if self.standard == 100092: return (self.D - self.d) / 2
 
-    def tension(self) -> float:
-        return 0  # 2 * T * k / (d_ * z * h * l)
+    def tension(self, moment, length, unevenness) -> float:
+        """Напряжение смятия [1, с.126]"""
+        assert isinstance(moment, (int, float, np.number))
+        assert isinstance(length, (int, float, np.number)) and 0 < length
+        assert isinstance(unevenness, (int, float, np.number))
+        return 2 * moment * unevenness / (self.average_diameter * self.n_teeth * self.height * length)
 
     @classmethod
     def fit(cls, standard: int | np.integer,
             max_tension: int | float | np.number,
             moment: int | float | np.number, length: int | float | np.number,
-            safety: int | float | np.number = 1, k=1.5) -> tuple[dict[str: float], ...]:
+            safety: int | float | np.number = 1, unevenness=1.5) -> tuple[dict[str: float], ...]:
         """Подбор шлицевого соединения [1, с.126]"""
         result = list()
         for i, row in gost_1139.iterrows():
-            spline = Spline(standard, -1, n_teeth=row['z'], d=row['d'], D=row['D'], chamfer=row['c'])
-            tension = 2 * moment * k / (spline.average_diameter * spline.n_teeth * spline.height * length)
-            if tension * safety <= max_tension: result.append({'d': d, 'D': D, 'z': z, 'safety': 0})
+            spline = Spline(standard, -1, n_teeth=row['n_teeth'], d=row['d'], D=row['D'])
+            tension = spline.tension(moment, length, unevenness)
+            if tension * safety <= max_tension:
+                result.append({'d': row['d'], 'D': row['D'], 'n_teeth': row['n_teeth'], 'safety': 0})
         return tuple(result)
 
     def show(self, **kwargs):
@@ -120,12 +147,14 @@ def test():
     splines = list()
 
     if 1:
-        splines.append(Spline(1139, -1))
+        splines.append(Spline(1139, -1, n_teeth=6, d=23 / 1000, D=26 / 1000))
+        print(splines[-1].tension(50, 0.03, 1.5))
 
     for spline in splines:
-        fitted_splines = Spline.fit(spline.standard, 40, 20, 20, 1)
+        fitted_splines = Spline.fit(spline.standard, 40 * 10 ** 6, 20, 20 / 1000, 1)
+        for s in fitted_splines: print(s)
 
-        # spline = Spline(spline.standard, )
+        spline = Spline(spline.standard, -1, **fitted_splines[0])
 
 
 if __name__ == '__main__':
