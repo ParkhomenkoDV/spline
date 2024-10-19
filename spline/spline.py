@@ -3,7 +3,7 @@ import os
 import sys
 
 import numpy as np
-from numpy import linspace, pi, sin, cos
+from numpy import array, linspace, sqrt, pi, sin, cos, arcsin as asin
 import pandas as pd
 from matplotlib import pyplot as plt
 
@@ -33,6 +33,12 @@ REFERENCES = MappingProxyType({
     2: '''''',
 
 })
+
+
+def rotate(point, angle):
+    """Поворот точки"""
+    x, y = point
+    return x * cos(angle) - y * sin(angle), x * sin(angle) + y * cos(angle)
 
 
 class Spline1139:
@@ -71,7 +77,7 @@ class Spline1139:
     @property
     def n_teeth(self) -> int:
         """Количество зубьев"""
-        return self._n_teeth
+        return int(self._n_teeth)
 
     @property
     def d(self) -> float:
@@ -125,14 +131,31 @@ class Spline1139:
 
     def show(self, **kwargs) -> None:
         """Визуализация сечения шлица"""
+        d, D, w, c = self.d * 1_000, self.D * 1_000, self.width * 1_000, self.chamfer * 1_000  # перевод в мм
+        r, R = d / 2, D / 2
+
         plt.figure(figsize=kwargs.pop('figsize', (8, 8)))
-        plt.title(kwargs.pop('title', 'Spline'), fontsize=14)
-        plt.plot([0, 0], [-self.D, self.D], color='orange', )
-        plt.plot([-self.D, self.D], [0, 0], color='orange', )
-        angle = linspace(0, 2 * pi, 360, endpoint=True, dtype='float32')
-        plt.plot(self.d / 2 * cos(angle), self.d / 2 * sin(angle), color='black', ls='solid', linewidth=3)
-        plt.plot(self.D / 2 * cos(angle), self.D / 2 * sin(angle), color='black', ls='solid', linewidth=3)
+        plt.suptitle(kwargs.pop('suptitle', 'Spline'), fontsize=16, fontweight='bold')
+        plt.title(kwargs.pop('title', str(self)), fontsize=14)
+        arc_D = linspace(asin(-(w - 2 * c) / D), asin((w - 2 * c) / D), 360 // self.n_teeth, dtype='float32')
+        arc_d = linspace(0, 2 * pi / self.n_teeth - asin(2 * w / D), 360 // self.n_teeth, dtype='float32')
+        for angle in linspace(pi / 2, 5 * pi / 2, self.n_teeth + 1, endpoint=True):
+            plt.plot(*rotate(array(((0, 0), (0, R))), angle), color='orange', ls='dashdot', linewidth=1.5)
+            plt.plot(*rotate(array(((0, 0), (0, R))), angle + pi / self.n_teeth),
+                     color='orange', ls='dashdot', linewidth=1.5)
+            plt.plot(r * cos(arc_d + angle + asin(w / R / 2)), r * sin(arc_d + angle + asin(w / R / 2)),
+                     color='black', ls='solid', linewidth=2)
+            plt.plot(R * cos(arc_D + angle), R * sin(arc_D + angle),
+                     color='black', ls='solid', linewidth=2)
+            plt.plot(*rotate(array(((w / 2 - c, w / 2), (R * cos((w / 2 - c) / R), R * cos((w / 2 - c) / R) - c))),
+                             angle - pi / 2),
+                     color='black', ls='solid', linewidth=2)
+            plt.plot(*rotate(array(((-(w / 2 - c), -w / 2), (R * cos((w / 2 - c) / R), R * cos((w / 2 - c) / R) - c))),
+                             angle - pi / 2),
+                     color='black', ls='solid', linewidth=2)
         plt.grid(kwargs.pop('grid', True))
+        plt.axis('square')
+        plt.xlabel('mm', fontsize=12), plt.ylabel('mm', fontsize=12)
         plt.tight_layout()
         plt.show()
 
