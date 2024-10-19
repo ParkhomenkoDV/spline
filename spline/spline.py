@@ -140,19 +140,22 @@ class Spline1139:
         arc_D = linspace(asin(-(w - 2 * c) / D), asin((w - 2 * c) / D), 360 // self.n_teeth, dtype='float32')
         arc_d = linspace(0, 2 * pi / self.n_teeth - asin(2 * w / D), 360 // self.n_teeth, dtype='float32')
         for angle in linspace(pi / 2, 5 * pi / 2, self.n_teeth + 1, endpoint=True):
-            plt.plot(*rotate(array(((0, 0), (0, R))), angle), color='orange', ls='dashdot', linewidth=1.5)
+            # оси
+            plt.plot(*rotate(array(((0, 0), (0, R))), angle),
+                     color='orange', ls='dashdot', linewidth=1.5)
             plt.plot(*rotate(array(((0, 0), (0, R))), angle + pi / self.n_teeth),
                      color='orange', ls='dashdot', linewidth=1.5)
+            # впадины
             plt.plot(r * cos(arc_d + angle + asin(w / R / 2)), r * sin(arc_d + angle + asin(w / R / 2)),
                      color='black', ls='solid', linewidth=2)
+            # зубья
             plt.plot(R * cos(arc_D + angle), R * sin(arc_D + angle),
                      color='black', ls='solid', linewidth=2)
-            plt.plot(*rotate(array(((w / 2 - c, w / 2), (R * cos((w / 2 - c) / R), R * cos((w / 2 - c) / R) - c))),
-                             angle - pi / 2),
-                     color='black', ls='solid', linewidth=2)
-            plt.plot(*rotate(array(((-(w / 2 - c), -w / 2), (R * cos((w / 2 - c) / R), R * cos((w / 2 - c) / R) - c))),
-                             angle - pi / 2),
-                     color='black', ls='solid', linewidth=2)
+            for lr in (-1, +1):  # фаски
+                plt.plot(*rotate(array(((lr * (w / 2 - c), lr * (w / 2)),
+                                        (R * cos((w / 2 - c) / R), R * cos((w / 2 - c) / R) - c))),
+                                 angle - pi / 2),
+                         color='black', ls='solid', linewidth=2)
         plt.grid(kwargs.pop('grid', True))
         plt.axis('square')
         plt.xlabel('mm', fontsize=12), plt.ylabel('mm', fontsize=12)
