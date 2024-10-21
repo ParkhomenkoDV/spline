@@ -3,7 +3,7 @@ import os
 import sys
 
 import numpy as np
-from numpy import array, linspace, sqrt, pi, sin, cos, arcsin as asin
+from numpy import array, linspace, sqrt, isnan, pi, sin, cos, arcsin as asin
 import pandas as pd
 from matplotlib import pyplot as plt
 
@@ -131,14 +131,23 @@ class Spline1139:
 
     def show(self, **kwargs) -> None:
         """Визуализация сечения шлица"""
-        d, D, w, c = self.d * 1_000, self.D * 1_000, self.width * 1_000, self.chamfer * 1_000  # перевод в мм
-        r, R = d / 2, D / 2
+        mm = 1_000  # перевод в мм
+        d, D, width, chamfer, radius = self.d * mm, self.D * mm, self.width * mm, self.chamfer * mm, self.radius * mm
+        corner_diameter, corner_width = self.corner_diameter * mm, self.corner_width * mm
+        r, R, cr = d / 2, D / 2, corner_diameter / 2
+
+        arc_D = linspace(asin(-(width / 2 - chamfer) / R), asin((width / 2 - chamfer) / R), 360 // self.n_teeth,
+                         dtype='float16')
+        arc_cd = linspace(0, 2 * pi / self.n_teeth - asin((width + radius) / cr), 360 // self.n_teeth,
+                          dtype='float16')
+        arc_radius = linspace(pi, 3 * pi / 2, 90, endpoint=True, dtype='float32')
+        '''if not isnan(corner_width):
+            arc_corner = linspace(asin(-(corner_width / 2 / r)), asin(corner_width / 2 / r), 360 // self.n_teeth,
+                                  dtype='float16')'''
 
         plt.figure(figsize=kwargs.pop('figsize', (8, 8)))
         plt.suptitle(kwargs.pop('suptitle', 'Spline'), fontsize=16, fontweight='bold')
         plt.title(kwargs.pop('title', str(self)), fontsize=14)
-        arc_D = linspace(asin(-(w - 2 * c) / D), asin((w - 2 * c) / D), 360 // self.n_teeth, dtype='float32')
-        arc_d = linspace(0, 2 * pi / self.n_teeth - asin(2 * w / D), 360 // self.n_teeth, dtype='float32')
         for angle in linspace(pi / 2, 5 * pi / 2, self.n_teeth + 1, endpoint=True):
             # оси
             plt.plot(*rotate(array(((0, 0), (0, R))), angle),
@@ -146,19 +155,37 @@ class Spline1139:
             plt.plot(*rotate(array(((0, 0), (0, R))), angle + pi / self.n_teeth),
                      color='orange', ls='dashdot', linewidth=1.5)
             # впадины
-            plt.plot(r * cos(arc_d + angle + asin(w / R / 2)), r * sin(arc_d + angle + asin(w / R / 2)),
+            plt.plot(cr * cos(arc_cd + angle + asin((width / 2 + radius) / cr)),
+                     cr * sin(arc_cd + angle + asin((width / 2 + radius) / cr)),
                      color='black', ls='solid', linewidth=2)
-            # зубья
+            # вершины зубья
             plt.plot(R * cos(arc_D + angle), R * sin(arc_D + angle),
                      color='black', ls='solid', linewidth=2)
-            for lr in (-1, +1):  # фаски
-                plt.plot(*rotate(array(((lr * (w / 2 - c), lr * (w / 2)),
-                                        (R * cos((w / 2 - c) / R), R * cos((w / 2 - c) / R) - c))),
+            '''if not isnan(corner_width):
+                plt.plot(*rotate(array((r * cos(arc_corner), r * sin(arc_corner))),
+                                 angle=angle + pi / self.n_teeth),
+                         color='black', ls='solid', linewidth=2)'''
+            for lr in (-1, +1):
+                # фаски
+                plt.plot(*rotate(
+                    array(((lr * (width / 2 - chamfer), lr * (width / 2)),
+                           (R * cos((width / 2 - chamfer) / R), R * cos((width / 2 - chamfer) / R) - chamfer))),
+                    angle - pi / 2),
+                         color='black', ls='solid', linewidth=2)
+                # боковые грани зубьев
+                plt.plot(*rotate(
+                    array(((lr * width / 2, lr * width / 2),
+                           (R * cos((width / 2 - chamfer) / R) - chamfer, cr - radius))),
+                    angle - pi / 2),
+                         color='black', ls='solid', linewidth=2)
+                # радиус скругления
+                plt.plot(*rotate(array((lr * (radius * cos(arc_radius) + (width / 2 + radius)),
+                                        radius * sin(arc_radius) + (cr - radius))),
                                  angle - pi / 2),
                          color='black', ls='solid', linewidth=2)
         plt.grid(kwargs.pop('grid', True))
         plt.axis('square')
-        plt.xlabel('mm', fontsize=12), plt.ylabel('mm', fontsize=12)
+        plt.xlabel(kwargs.pop('xlabel', 'mm'), fontsize=12), plt.ylabel(kwargs.pop('ylabel', 'mm'), fontsize=12)
         plt.tight_layout()
         plt.show()
 
