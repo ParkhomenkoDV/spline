@@ -3,7 +3,7 @@ import os
 import sys
 
 import numpy as np
-from numpy import array, linspace, sqrt, isnan, pi, sin, cos, arcsin as asin
+from numpy import array, linspace, sqrt, nan, isnan, pi, sin, cos, arcsin as asin
 import pandas as pd
 from matplotlib import pyplot as plt
 
@@ -22,8 +22,15 @@ gost_1139 = gost_1139.rename(columns={'z': 'n_teeth',
 for column in ('d', 'D', 'width', 'corner_diameter', 'corner_width', 'chamfer', 'deviation_chamfer', 'radius'):
     gost_1139[column] /= 1_000  # СИ для расчетов
 
-gost_6033 = pd.read_excel(os.path.join(HERE, '6033.xlsx'))  # TODO
-# print(gost_6033)
+gost_6033 = pd.read_excel(os.path.join(HERE, '6033.xlsx'), sheet_name='common', )
+
+gost_6033[0] = gost_6033[0] / 1_000  # перевод D в СИ
+gost_6033 = gost_6033.set_index(0)
+gost_6033.index.name = 'D'
+gost_6033 = gost_6033.rename(columns={column: float(str(column).strip().replace(',', '.')) / 1_000
+                                      for column in gost_6033.columns})
+gost_6033 = gost_6033.fillna(0)
+for column in gost_6033.columns: gost_6033[column] = gost_6033[column].astype('int32')
 
 REFERENCES = MappingProxyType({
     1: '''Детали машин: учебник для вузов /
@@ -41,15 +48,20 @@ def rotate(point, angle):
     return x * cos(angle) - y * sin(angle), x * sin(angle) + y * cos(angle)
 
 
+def validate_join(join) -> str:
+    """Валидация центрирования"""
+    assert isinstance(join, str)
+    join = join.strip().lower()
+    assert join in ('inner', 'outer', 'left', 'right')  # центрирование внутреннее, внешнее, боковое
+    return join
+
+
 class Spline1139:
     """Шлицевое соединение по ГОСТ 1139"""
     __STANDARD = 1139
 
     def __init__(self, join: str, n_teeth: int, d: float, D: float, **kwargs):
-        assert isinstance(join, str)
-        join = join.strip().lower()
-        assert join in ('inner', 'outer', 'left', 'right')  # центрирование внутреннее, внешнее, боковое
-        self._join = join
+        self._join = validate_join(join)
 
         for _, row in gost_1139.iterrows():
             if n_teeth == row['n_teeth'] and d == row['d'] and D == row['D']:
@@ -194,16 +206,34 @@ class Spline6033:
     """Шлицевое соединение по ГОСТ 6033"""
     __STANDARD = 6033
 
-    def __init__(self, **kwargs):
-        pass
+    def __init__(self, join: str, n_teeth: int, module: float, D: float, **kwargs):
+        self._join = validate_join(join)
+
+        assert module in gost_6033.columns, f'module {module} not in standard {Spline6033.__STANDARD}'
+        series = gost_6033[module]  # фильтрация по модулю
+        dct = series[series > 0].to_dict()  # фильтрация по существованию и преобразование в словарь
+        assert dct.get(D, nan) == n_teeth and not isnan(n_teeth), \
+            (f'n_teeth={n_teeth}, module={module}, D={D} not in standard {Spline6033.__STANDARD}. '
+             f'Look spline.gost_{Spline6033.__STANDARD}')
+
+        self._n_teeth, self._module, self._D = n_teeth, module, D
+
+    def __str__(self) -> str:
+        """Условное обозначение"""
+        mm = 1_000  # перевод в мм
+        return f'{self.D * mm:.0f}x{self.module * mm:.0f} ГОСТ {Spline6033.__STANDARD}-80'
 
     @property
     def n_teeth(self) -> int:
-        return self.__n_teeth
+        return self._n_teeth
 
     @property
     def module(self) -> float:
-        return self.__module
+        return self._module
+
+    @property
+    def D(self) -> float:
+        return self._D
 
     @property
     def d(self) -> float:
@@ -211,12 +241,12 @@ class Spline6033:
         return self.module * self.n_teeth
 
     @property
-    def alpha(self):
+    def alpha(self) -> float:
         """Угол профиля зуба [рад]"""
         return pi / 6
 
     @property
-    def circumferential_step(self):
+    def circumferential_step(self) -> float:
         """Делительный окружной шаг зубьев"""
         return pi * self.module
 
@@ -273,7 +303,7 @@ class Spline(Spline1139, Spline6033, Spline100092):
         if self.standard == 1139:
             Spline1139.__init__(self, join, **parameters)
         elif self.standard == 6033:
-            Spline6033.__init__(self, **parameters)
+            Spline6033.__init__(self, join, **parameters)
         elif self.standard == 100092:
             Spline100092.__init__(self, **parameters)
         else:
@@ -321,8 +351,12 @@ class Spline(Spline1139, Spline6033, Spline100092):
 def test():
     splines, conditions = list(), list()
 
-    if 1:
+    if 1139 == 0:
         splines.append(Spline(1139, 'inner', n_teeth=6, d=23 / 1_000, D=26 / 1_000))
+        conditions.append({'moment': 40, 'length': 40 / 1_000, 'unevenness': 1.5})
+
+    if 6033:
+        splines.append(Spline(6033, 'inner', n_teeth=54, module=8 / 1_000, D=440 / 1_000))
         conditions.append({'moment': 40, 'length': 40 / 1_000, 'unevenness': 1.5})
 
     for spline, condition in zip(splines, conditions):
