@@ -512,7 +512,7 @@ def test():
 
     splines, conditions = list(), list()
 
-    if 1139 == 0:
+    if 1139:
         splines.append(Spline(1139, random.choice(('inner', 'outer', 'left', 'right')),
                               n_teeth=6, d=23 / 1_000, D=26 / 1_000))
         conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
