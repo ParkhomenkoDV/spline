@@ -9,3 +9,11 @@ def test_init_spline(standard):
         assert Spline(standard, random.choice(('inner', 'outer', 'left', 'right')))
     elif standard == 6033:
         assert Spline(standard, random.choice(('outer', 'left', 'right')))
+
+
+def test_spline_tension():
+    pass
+
+
+def test_fit_spline():
+    pass
