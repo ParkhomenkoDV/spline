@@ -3,7 +3,7 @@ import os
 import sys
 
 import numpy as np
-from numpy import array, linspace, sqrt, nan, isnan, pi, sin, cos, arcsin as asin
+from numpy import array, linspace, sqrt, nan, isnan, pi, sin, cos, tan, arcsin as asin, arctan as atan
 import pandas as pd
 from matplotlib import pyplot as plt
 
@@ -141,6 +141,13 @@ class Spline1139:
         """Средний диаметр [1, с.127]"""
         return 0.5 * (self.d + self.D) - 2 * self.chamfer
 
+    def tension(self, moment, length, unevenness) -> float:
+        """Напряжение смятия [1, с.126]"""
+        assert isinstance(moment, (int, float, np.number))
+        assert isinstance(length, (int, float, np.number)) and 0 < length
+        assert isinstance(unevenness, (int, float, np.number))  # 1.1...1.5
+        return 2 * moment * unevenness / (self.average_diameter * self.n_teeth * self.height * length)
+
     def show(self, **kwargs) -> None:
         """Визуализация сечения шлица"""
         mm = 1_000  # перевод в мм
@@ -148,11 +155,14 @@ class Spline1139:
         corner_diameter, corner_width = self.corner_diameter * mm, self.corner_width * mm
         r, R, cr = d / 2, D / 2, corner_diameter / 2
 
+        xcc, ycc = width / 2 + radius, sqrt((cr + radius) ** 2 - (width / 2 + radius) ** 2)
+        k = ycc / xcc  # tan угла наклона соприкосновения окружностей
+
         arc_D = linspace(asin(-(width / 2 - chamfer) / R), asin((width / 2 - chamfer) / R), 360 // self.n_teeth,
                          dtype='float16')
-        arc_cd = linspace(0, 2 * pi / self.n_teeth - asin((width + radius) / cr), 360 // self.n_teeth,
-                          dtype='float16')
-        arc_radius = linspace(pi, 3 * pi / 2, 90, endpoint=True, dtype='float32')
+        arc_cd = linspace(0, 2 * pi / self.n_teeth - 2 * (pi / 2 - atan(k)), 360 // self.n_teeth,
+                          dtype='float16') + (pi / 2 - atan(k))
+        arc_radius = linspace(pi, pi + atan(k), 90, endpoint=True, dtype='float32')
         '''if not isnan(corner_width):
             arc_corner = linspace(asin(-(corner_width / 2 / r)), asin(corner_width / 2 / r), 360 // self.n_teeth,
                                   dtype='float16')'''
@@ -167,10 +177,9 @@ class Spline1139:
             plt.plot(*rotate(array(((0, 0), (0, R))), angle + pi / self.n_teeth),
                      color='orange', ls='dashdot', linewidth=1.5)
             # впадины
-            plt.plot(cr * cos(arc_cd + angle + asin((width / 2 + radius) / cr)),
-                     cr * sin(arc_cd + angle + asin((width / 2 + radius) / cr)),
+            plt.plot(cr * cos(arc_cd + angle), cr * sin(arc_cd + angle),
                      color='black', ls='solid', linewidth=2)
-            # вершины зубья
+            # вершины
             plt.plot(R * cos(arc_D + angle), R * sin(arc_D + angle),
                      color='black', ls='solid', linewidth=2)
             '''if not isnan(corner_width):
@@ -181,18 +190,21 @@ class Spline1139:
                 # фаски
                 plt.plot(*rotate(
                     array(((lr * (width / 2 - chamfer), lr * (width / 2)),
-                           (R * cos((width / 2 - chamfer) / R), R * cos((width / 2 - chamfer) / R) - chamfer))),
+                           (sqrt(R ** 2 - (width / 2 - chamfer) ** 2),
+                            sqrt(R ** 2 - (width / 2 - chamfer) ** 2) - chamfer))),
                     angle - pi / 2),
                          color='black', ls='solid', linewidth=2)
                 # боковые грани зубьев
                 plt.plot(*rotate(
                     array(((lr * width / 2, lr * width / 2),
-                           (R * cos((width / 2 - chamfer) / R) - chamfer, cr - radius))),
+                           (sqrt(R ** 2 - (width / 2 - chamfer) ** 2) - chamfer,
+                            sqrt((cr + radius) ** 2 - (width / 2 + radius) ** 2)))),
                     angle - pi / 2),
                          color='black', ls='solid', linewidth=2)
                 # радиус скругления
                 plt.plot(*rotate(array((lr * (radius * cos(arc_radius) + (width / 2 + radius)),
-                                        radius * sin(arc_radius) + (cr - radius))),
+                                        radius * sin(arc_radius) + sqrt(
+                                            (cr + radius) ** 2 - (width / 2 + radius) ** 2))),
                                  angle - pi / 2),
                          color='black', ls='solid', linewidth=2)
         plt.grid(kwargs.pop('grid', True))
@@ -224,6 +236,11 @@ class Spline6033:
         return f'{self.D * mm:.0f}x{self.module * mm:.0f} ГОСТ {Spline6033.__STANDARD}-80'
 
     @property
+    def join(self) -> str:
+        """Центрирование"""
+        return self._join
+
+    @property
     def n_teeth(self) -> int:
         return self._n_teeth
 
@@ -251,6 +268,74 @@ class Spline6033:
         return pi * self.module
 
     @property
+    def main_circle_diameter(self) -> float:
+        """Диаметр основной окружности"""
+        return self.module * self.n_teeth * cos(self.alpha)
+
+    @property
+    def teeth_height_head(self) -> float:
+        """Высота головки зуба вала"""
+        if self.join in ('left', 'right'): return 0.45 * self.module
+        if self.join == 'outer': return 0.55 * self.module
+        if self.join == 'inner': return nan
+
+    @property
+    def teeth_depth_head(self) -> float:
+        """Высота головки зуба втулки"""
+        return 0.45 * self.module
+
+    def teeth_curvature_radius(self) -> float:
+        """Радиус кривизны переходной кривой зуба"""
+        return 0.15 * self.module
+
+    @property
+    def nominal_pitch_circumferential_width(self) -> float:
+        """Номинальная делительная окружная ширина впадины втулки / толщина зуба вала"""
+        return pi / 2 * self.module + 2 * self.original_contour_offset * tan(self.alpha)
+
+    @property
+    def nominal_diameter(self) -> float:
+        """Номинальный диаметр"""
+        return self.module * self.n_teeth + 2 * self.original_contour_offset + 1.1 * self.module
+
+    @property
+    def valleys_D(self) -> tuple[float, float]:
+        """Диаметр впадин втулки"""
+        return self.D, self.D + 0.44 * self.module
+
+    @property
+    def peaks_D(self) -> float:
+        """Диаметр вершин втулки"""
+        return self.D - 2 * self.module
+
+    @property
+    def original_contour_offset(self) -> float:
+        """Смещение исходного контура"""
+        return 0.5 * (self.D - self.module * self.n_teeth - 1.1 * self.module)
+
+    @property
+    def valleys_d(self) -> tuple[float, float]:
+        """Диаметр впадин вала"""
+        return self.D - 2.76 * self.module, self.D - 2.2 * self.module
+
+    @property
+    def peaks_d(self) -> float:
+        """Диаметр вершин вала"""
+        if self.join in ('left', 'right'): return self.D - 0.2 * self.module
+        if self.join == 'outer': return self.D
+        if self.join == 'inner': return nan
+
+    @property
+    def chamfer(self) -> float:
+        """Фаска или радиус притупления продольной кромки зуба втулки"""
+        return 0.15 * self.module
+
+    @property
+    def radial_clearance(self) -> float:
+        """Радиальный зазор"""
+        return 0.1 * self.module
+
+    @property
     def height(self) -> float:
         """Высота контакта [1, с.127]"""
         return 0.8 * self.module
@@ -260,12 +345,42 @@ class Spline6033:
         """Средний диаметр [1, с.127]"""
         return self.D - 1.1 * self.module
 
+    def tension(self, moment, length, unevenness) -> float:
+        """Напряжение смятия [1, с.130]"""
+        assert isinstance(moment, (int, float, np.number))
+        assert isinstance(length, (int, float, np.number)) and 0 < length
+        assert isinstance(unevenness, (int, float, np.number))  # 0.67...0.92
+
+        power = np.mean((5 * (3 / 2 + 0.5) * self.d / self.main_circle_diameter * cos(self.alpha) + 1,
+                         5 * (9 / 2 + 0.5) * self.d / self.main_circle_diameter + 1))
+
+        return 2 * moment * unevenness * power / (self.average_diameter * self.n_teeth * self.height * length)
+
+    def show(self, **kwargs) -> None:
+        """Визуализация сечения шлица"""
+        mm = 1_000
+        db = self.main_circle_diameter * mm
+        rb = db / 2
+
+        plt.figure(figsize=kwargs.pop('figsize', (8, 8)))
+        plt.suptitle(kwargs.pop('suptitle', 'Spline'), fontsize=16, fontweight='bold')
+        plt.title(kwargs.pop('title', str(self)), fontsize=14)
+
+        circle = linspace(0, 2 * pi, 360, endpoint=True, dtype='float16')
+        plt.plot(rb * cos(circle), rb * sin(circle), color='orange', ls='dashdot', linewidth=1.5)
+
+        plt.grid(kwargs.pop('grid', True))
+        plt.axis('square')
+        plt.xlabel(kwargs.pop('xlabel', 'mm'), fontsize=12), plt.ylabel(kwargs.pop('ylabel', 'mm'), fontsize=12)
+        plt.tight_layout()
+        plt.show()
+
 
 class Spline100092:
     """Шлицевое соединение по ОСТ 100092"""
     __STANDARD = 100092
 
-    def __init__(self, **kwargs):
+    def __init__(self, join, **kwargs):
         pass
 
     @property
@@ -305,9 +420,14 @@ class Spline(Spline1139, Spline6033, Spline100092):
         elif self.standard == 6033:
             Spline6033.__init__(self, join, **parameters)
         elif self.standard == 100092:
-            Spline100092.__init__(self, **parameters)
+            Spline100092.__init__(self, join, **parameters)
         else:
             raise Exception(f'standard {standard} not in {Spline.TYPES}')
+
+    def __str__(self):
+        if self.standard == 1139: return Spline1139.__str__(self)
+        if self.standard == 6033: return Spline6033.__str__(self)
+        if self.standard == 100092: return Spline100092.__str__(self)
 
     @property
     def standard(self) -> int:
@@ -317,13 +437,6 @@ class Spline(Spline1139, Spline6033, Spline100092):
     def join(self) -> str:
         """Центрирования"""
         return self.__join
-
-    def tension(self, moment, length, unevenness) -> float:
-        """Напряжение смятия [1, с.126]"""
-        assert isinstance(moment, (int, float, np.number))
-        assert isinstance(length, (int, float, np.number)) and 0 < length
-        assert isinstance(unevenness, (int, float, np.number))
-        return 2 * moment * unevenness / (self.average_diameter * self.n_teeth * self.height * length)
 
     @classmethod
     def fit(cls, standard: int | np.integer, join: str,
@@ -341,8 +454,15 @@ class Spline(Spline1139, Spline6033, Spline100092):
                     result.append({'n_teeth': int(row['n_teeth']), 'd': float(row['d']), 'D': float(row['D']),
                                    'safety': max_tension / (tension * safety)})
         elif standard == 6033:
-            for _, row in gost_6033.iterrows():
-                spline = Spline(standard, join, )
+            for module in gost_6033.columns:
+                series = gost_6033[module]
+                dct = series[series > 0].to_dict()
+                for D, n_teeth in dct.items():
+                    spline = Spline(standard, join, n_teeth=n_teeth, module=module, D=D)
+                    tension = spline.tension(moment, length, unevenness)
+                    if tension * safety <= max_tension:
+                        result.append({'n_teeth': int(n_teeth), 'module': float(module), 'D': float(D),
+                                       'safety': max_tension / (tension * safety)})
         elif standard == 100092:
             pass
         return tuple(result)
@@ -351,7 +471,7 @@ class Spline(Spline1139, Spline6033, Spline100092):
 def test():
     splines, conditions = list(), list()
 
-    if 1139 == 0:
+    if 1139:
         splines.append(Spline(1139, 'inner', n_teeth=6, d=23 / 1_000, D=26 / 1_000))
         conditions.append({'moment': 40, 'length': 40 / 1_000, 'unevenness': 1.5})
 
@@ -361,7 +481,7 @@ def test():
 
     for spline, condition in zip(splines, conditions):
         print(spline)
-        print(f'{spline.tension(**condition) = }')
+        print(f'{spline.tension(**condition) = }')  # TODO: наследование происходит слева-направо последовательно!
         fitted_splines = Spline.fit(spline.standard, spline.join, 40 * 10 ** 6, 20, 20 / 1000, 1)
         for fs in fitted_splines: print(fs)
 
