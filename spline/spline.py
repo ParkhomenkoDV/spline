@@ -48,14 +48,6 @@ def rotate(point, angle):
     return x * cos(angle) - y * sin(angle), x * sin(angle) + y * cos(angle)
 
 
-def validate_join(join) -> str:
-    """Валидация центрирования"""
-    assert isinstance(join, str)
-    join = join.strip().lower()
-    assert join in ('inner', 'outer', 'left', 'right')  # центрирование внутреннее, внешнее, боковое
-    return join
-
-
 class Spline1139:
     """Шлицевое соединение по ГОСТ 1139"""
     __STANDARD = 1139
@@ -64,7 +56,10 @@ class Spline1139:
                  '__width', '__corner_diameter', '__corner_width', '__chamfer', '__deviation_chamfer', '__radius')
 
     def __init__(self, join: str, n_teeth: int, d: float, D: float, **kwargs):
-        self.__join = validate_join(join)
+        assert isinstance(join, str)
+        join = join.strip().lower()
+        assert join in ('inner', 'outer', 'left', 'right')  # центрирование внутреннее, внешнее, боковое
+        self.__join = join
 
         for _, row in gost_1139.iterrows():
             if n_teeth == row['n_teeth'] and d == row['d'] and D == row['D']:
@@ -221,8 +216,13 @@ class Spline6033:
     """Шлицевое соединение по ГОСТ 6033"""
     __STANDARD = 6033
 
+    __slots__ = ('__join', '__n_teeth', '__module', '__D')
+
     def __init__(self, join: str, n_teeth: int, module: float, D: float, **kwargs):
-        self.__join = validate_join(join)
+        assert isinstance(join, str)
+        join = join.strip().lower()
+        assert join in ('outer', 'left', 'right')  # центрирование внешнее, боковое
+        self.__join = join
 
         assert module in gost_6033.columns, f'module {module} not in standard {Spline6033.__STANDARD}'
         series = gost_6033[module]  # фильтрация по модулю
@@ -236,7 +236,7 @@ class Spline6033:
     def __str__(self) -> str:
         """Условное обозначение"""
         mm = 1_000  # перевод в мм
-        return f'{self.D * mm:.0f}x{self.module * mm:.0f} ГОСТ {Spline6033.__STANDARD}-80'
+        return f'{self.D * mm:.0f}x{self.module * mm:.2f} ГОСТ {Spline6033.__STANDARD}-80'
 
     @property
     def join(self) -> str:
@@ -280,7 +280,6 @@ class Spline6033:
         """Высота головки зуба вала"""
         if self.join in ('left', 'right'): return 0.45 * self.module
         if self.join == 'outer': return 0.55 * self.module
-        if self.join == 'inner': return nan
 
     @property
     def teeth_depth_head(self) -> float:
@@ -326,7 +325,6 @@ class Spline6033:
         """Диаметр вершин вала"""
         if self.join in ('left', 'right'): return self.D - 0.2 * self.module
         if self.join == 'outer': return self.D
-        if self.join == 'inner': return nan
 
     @property
     def chamfer(self) -> float:
@@ -358,15 +356,51 @@ class Spline6033:
     def show(self, **kwargs) -> None:
         """Визуализация сечения шлица"""
         mm = 1_000
-        db = self.main_circle_diameter * mm
-        rb = db / 2
+        df, da = np.mean(self.valleys_d) * mm, self.peaks_d * mm
+        dxm = (self.d + 2 * self.original_contour_offset) * mm
+        Da, Df = self.peaks_D * mm, np.mean(self.valleys_D) * mm
+
+        a = pi / self.n_teeth  # угол раскрытия на 1 зуб
+        # коэффициенты прямой наклона левой грани зуба вала
+        k, b = tan(pi / 2 - self.alpha), dxm / 2 * cos(a / 2) + tan(pi / 2 - self.alpha) * (dxm / 2 * sin(a / 2))
+        x_df = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - df ** 2 / 4))) / (1 + k ** 2)
+        x_Da = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - Da ** 2 / 4))) / (1 + k ** 2)
+        x_da = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - da ** 2 / 4))) / (1 + k ** 2)
+        x_Df = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - Df ** 2 / 4))) / (1 + k ** 2)
 
         plt.figure(figsize=kwargs.pop('figsize', (8, 8)))
         plt.suptitle(kwargs.pop('suptitle', 'Spline'), fontsize=16, fontweight='bold')
         plt.title(kwargs.pop('title', str(self)), fontsize=14)
 
         circle = linspace(0, 2 * pi, 360, endpoint=True, dtype='float16')
-        plt.plot(rb * cos(circle), rb * sin(circle), color='orange', ls='dashdot', linewidth=1.5)
+        arc_df = linspace(-pi / self.n_teeth - asin(2 * x_df / df), pi / self.n_teeth + asin(2 * x_df / df),
+                          360 // self.n_teeth, endpoint=True) + pi / self.n_teeth
+        arc_Da = linspace(-pi / self.n_teeth - asin(2 * x_Da / Da), pi / self.n_teeth + asin(2 * x_Da / Da),
+                          360 // self.n_teeth, endpoint=True) + pi / self.n_teeth
+        arc_da = linspace(-asin(2 * x_da / da), asin(2 * x_da / da), 360 // self.n_teeth, endpoint=True)
+        arc_Df = linspace(-asin(2 * x_Df / Df), asin(2 * x_Df / Df), 360 // self.n_teeth, endpoint=True)
+
+        plt.plot(dxm / 2 * cos(circle), dxm / 2 * sin(circle), color='orange', ls='dashdot', linewidth=1.5)
+        for angle in linspace(pi / 2, 5 * pi / 2, self.n_teeth + 1, endpoint=True):
+            # оси
+            plt.plot(*rotate(array(((0, 0), (0, Df / 2))), angle),
+                     color='orange', ls='dashdot', linewidth=1.5)
+            plt.plot(*rotate(array(((0, 0), (0, Df / 2))), angle + pi / self.n_teeth),
+                     color='orange', ls='dashdot', linewidth=1.5)
+            # дуги
+            plt.plot(df / 2 * cos(arc_df + angle), df / 2 * sin(arc_df + angle),
+                     color='black', ls='solid', linewidth=2)
+            plt.plot(Da / 2 * cos(arc_Da + angle), Da / 2 * sin(arc_Da + angle),
+                     color='black', ls='solid', linewidth=2)
+            plt.plot(da / 2 * cos(arc_da + angle), da / 2 * sin(arc_da + angle),
+                     color='black', ls='solid', linewidth=2)
+            plt.plot(Df / 2 * cos(arc_Df + angle), Df / 2 * sin(arc_Df + angle),
+                     color='black', ls='solid', linewidth=2)
+
+            for lr in (-1, +1):
+                plt.plot(*rotate(array(((lr * x_Df, lr * x_df), (k * x_Df + b, k * x_df + b))),
+                                 angle=angle - pi / 2),
+                         color='black', ls='solid', linewidth=2)
 
         plt.grid(kwargs.pop('grid', True))
         plt.axis('square')
@@ -474,15 +508,19 @@ class Spline:
 
 
 def test():
+    from numpy import random
+
     splines, conditions = list(), list()
 
-    if 1139:
-        splines.append(Spline(1139, 'inner', n_teeth=6, d=23 / 1_000, D=26 / 1_000))
-        conditions.append({'moment': 40, 'length': 40 / 1_000})
+    if 1139 == 0:
+        splines.append(Spline(1139, random.choice(('inner', 'outer', 'left', 'right')),
+                              n_teeth=6, d=23 / 1_000, D=26 / 1_000))
+        conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
 
     if 6033:
-        splines.append(Spline(6033, 'inner', n_teeth=54, module=8 / 1_000, D=440 / 1_000))
-        conditions.append({'moment': 40, 'length': 40 / 1_000})
+        splines.append(Spline(6033, random.choice(('outer', 'left', 'right')),
+                              n_teeth=54, module=8 / 1_000, D=440 / 1_000))
+        conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
 
     for spline, condition in zip(splines, conditions):
         print(spline)
