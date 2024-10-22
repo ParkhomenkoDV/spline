@@ -60,12 +60,15 @@ class Spline1139:
     """Шлицевое соединение по ГОСТ 1139"""
     __STANDARD = 1139
 
+    __slots__ = ('__join', '__n_teeth', '__d', '__D',  # необходимые атрибуты
+                 '__width', '__corner_diameter', '__corner_width', '__chamfer', '__deviation_chamfer', '__radius')
+
     def __init__(self, join: str, n_teeth: int, d: float, D: float, **kwargs):
-        self._join = validate_join(join)
+        self.__join = validate_join(join)
 
         for _, row in gost_1139.iterrows():
             if n_teeth == row['n_teeth'] and d == row['d'] and D == row['D']:
-                for key, value in row.to_dict().items(): setattr(self, f'_{key}', value)
+                for key, value in row.to_dict().items(): setattr(self, f'_{Spline1139.__name__}__{key}', value)
                 break
         else:
             raise Exception(f'n_teeth={n_teeth}, d={d}, D={D} not in standard {Spline1139.__STANDARD}. '
@@ -84,52 +87,52 @@ class Spline1139:
     @property
     def join(self) -> str:
         """Центрирование"""
-        return self._join
+        return self.__join
 
     @property
     def n_teeth(self) -> int:
         """Количество зубьев"""
-        return int(self._n_teeth)
+        return int(self.__n_teeth)
 
     @property
     def d(self) -> float:
         """Внутренний диаметр"""
-        return self._d
+        return self.__d
 
     @property
     def D(self) -> float:
         """Внешний диаметр"""
-        return self._D
+        return self.__D
 
     @property
     def width(self) -> float:
         """Ширина зуба"""
-        return self._width
+        return self.__width
 
     @property
     def corner_diameter(self) -> float:
         """Диаметр канавки"""
-        return self._corner_diameter
+        return self.__corner_diameter
 
     @property
     def corner_width(self) -> float:
         """Ширина канавки"""
-        return self._corner_width
+        return self.__corner_width
 
     @property
     def chamfer(self) -> float:
         """Фаска"""
-        return self._chamfer
+        return self.__chamfer
 
     @property
     def deviation_chamfer(self) -> tuple[float, float]:
         """Отклонение фаски"""
-        return 0, self._deviation_chamfer
+        return 0, self.__deviation_chamfer
 
     @property
     def radius(self) -> float:
         """Радис скругления"""
-        return self._radius
+        return self.__radius
 
     @property
     def height(self) -> float:
@@ -141,12 +144,12 @@ class Spline1139:
         """Средний диаметр [1, с.127]"""
         return 0.5 * (self.d + self.D) - 2 * self.chamfer
 
-    def tension(self, moment, length, unevenness) -> float:
+    def tension(self, moment: float | int | np.number, length: float | int | np.number) -> tuple[float, float]:
         """Напряжение смятия [1, с.126]"""
         assert isinstance(moment, (int, float, np.number))
         assert isinstance(length, (int, float, np.number)) and 0 < length
-        assert isinstance(unevenness, (int, float, np.number))  # 1.1...1.5
-        return 2 * moment * unevenness / (self.average_diameter * self.n_teeth * self.height * length)
+        tension = 2 * moment * array((1.1, 1.5)) / (self.average_diameter * self.n_teeth * self.height * length)
+        return float(tension[0]), float(tension[1])
 
     def show(self, **kwargs) -> None:
         """Визуализация сечения шлица"""
@@ -219,7 +222,7 @@ class Spline6033:
     __STANDARD = 6033
 
     def __init__(self, join: str, n_teeth: int, module: float, D: float, **kwargs):
-        self._join = validate_join(join)
+        self.__join = validate_join(join)
 
         assert module in gost_6033.columns, f'module {module} not in standard {Spline6033.__STANDARD}'
         series = gost_6033[module]  # фильтрация по модулю
@@ -228,7 +231,7 @@ class Spline6033:
             (f'n_teeth={n_teeth}, module={module}, D={D} not in standard {Spline6033.__STANDARD}. '
              f'Look spline.gost_{Spline6033.__STANDARD}')
 
-        self._n_teeth, self._module, self._D = n_teeth, module, D
+        self.__n_teeth, self.__module, self.__D = n_teeth, module, D
 
     def __str__(self) -> str:
         """Условное обозначение"""
@@ -238,19 +241,19 @@ class Spline6033:
     @property
     def join(self) -> str:
         """Центрирование"""
-        return self._join
+        return self.__join
 
     @property
     def n_teeth(self) -> int:
-        return self._n_teeth
+        return self.__n_teeth
 
     @property
     def module(self) -> float:
-        return self._module
+        return self.__module
 
     @property
     def D(self) -> float:
-        return self._D
+        return self.__D
 
     @property
     def d(self) -> float:
@@ -345,16 +348,12 @@ class Spline6033:
         """Средний диаметр [1, с.127]"""
         return self.D - 1.1 * self.module
 
-    def tension(self, moment, length, unevenness) -> float:
+    def tension(self, moment: float | int | np.number, length: float | int | np.number) -> tuple[float, float]:
         """Напряжение смятия [1, с.130]"""
         assert isinstance(moment, (int, float, np.number))
         assert isinstance(length, (int, float, np.number)) and 0 < length
-        assert isinstance(unevenness, (int, float, np.number))  # 0.67...0.92
-
-        power = np.mean((5 * (3 / 2 + 0.5) * self.d / self.main_circle_diameter * cos(self.alpha) + 1,
-                         5 * (9 / 2 + 0.5) * self.d / self.main_circle_diameter + 1))
-
-        return 2 * moment * unevenness * power / (self.average_diameter * self.n_teeth * self.height * length)
+        tension = 2 * moment * array((0.67, 0.92)) / (self.average_diameter * self.n_teeth * self.height * length)
+        return float(tension[0]), float(tension[1])
 
     def show(self, **kwargs) -> None:
         """Визуализация сечения шлица"""
@@ -394,7 +393,7 @@ class Spline100092:
         return self.module * self.n_teeth
 
 
-class Spline(Spline1139, Spline6033, Spline100092):
+class Spline:
     """Шлицевое соединение"""
     # __slots__ = ('__standard', '__join')
 
@@ -416,18 +415,22 @@ class Spline(Spline1139, Spline6033, Spline100092):
 
         # Определение родительского класса
         if self.standard == 1139:
-            Spline1139.__init__(self, join, **parameters)
+            self.__spline = Spline1139(join, **parameters)
         elif self.standard == 6033:
-            Spline6033.__init__(self, join, **parameters)
+            self.__spline = Spline6033(join, **parameters)
         elif self.standard == 100092:
-            Spline100092.__init__(self, join, **parameters)
+            self.__spline = Spline100092(join, **parameters)
         else:
             raise Exception(f'standard {standard} not in {Spline.TYPES}')
 
     def __str__(self):
-        if self.standard == 1139: return Spline1139.__str__(self)
-        if self.standard == 6033: return Spline6033.__str__(self)
-        if self.standard == 100092: return Spline100092.__str__(self)
+        return str(self.__spline)
+
+    def __getattr__(self, item):
+        if item in dir(self.__spline):
+            return getattr(self.__spline, item)
+        else:
+            raise AttributeError(f'{item}')
 
     @property
     def standard(self) -> int:
@@ -442,27 +445,29 @@ class Spline(Spline1139, Spline6033, Spline100092):
     def fit(cls, standard: int | np.integer, join: str,
             max_tension: int | float | np.number,
             moment: int | float | np.number, length: int | float | np.number,
-            safety: int | float | np.number = 1, unevenness=1.5) -> tuple[dict[str: float], ...]:
+            safety: int | float | np.number = 1) -> tuple[dict[str: float], ...]:
         """Подбор шлицевого соединения [1, с.126]"""
         assert standard in Spline.TYPES.keys()
         result = list()
         if standard == 1139:
             for _, row in gost_1139.iterrows():
                 spline = Spline(standard, join, n_teeth=row['n_teeth'], d=row['d'], D=row['D'])
-                tension = spline.tension(moment, length, unevenness)
-                if tension * safety <= max_tension:
+                tension = spline.tension(moment, length)
+                if np.mean(tension) * safety <= max_tension:
                     result.append({'n_teeth': int(row['n_teeth']), 'd': float(row['d']), 'D': float(row['D']),
-                                   'safety': max_tension / (tension * safety)})
+                                   'safety': (max_tension / tension[0] / safety,
+                                              max_tension / tension[1] / safety)})
         elif standard == 6033:
             for module in gost_6033.columns:
                 series = gost_6033[module]
                 dct = series[series > 0].to_dict()
                 for D, n_teeth in dct.items():
                     spline = Spline(standard, join, n_teeth=n_teeth, module=module, D=D)
-                    tension = spline.tension(moment, length, unevenness)
-                    if tension * safety <= max_tension:
+                    tension = spline.tension(moment, length)
+                    if np.mean(tension) * safety <= max_tension:
                         result.append({'n_teeth': int(n_teeth), 'module': float(module), 'D': float(D),
-                                       'safety': max_tension / (tension * safety)})
+                                       'safety': (max_tension / tension[0] / safety,
+                                                  max_tension / tension[1] / safety)})
         elif standard == 100092:
             pass
         return tuple(result)
@@ -473,16 +478,16 @@ def test():
 
     if 1139:
         splines.append(Spline(1139, 'inner', n_teeth=6, d=23 / 1_000, D=26 / 1_000))
-        conditions.append({'moment': 40, 'length': 40 / 1_000, 'unevenness': 1.5})
+        conditions.append({'moment': 40, 'length': 40 / 1_000})
 
     if 6033:
         splines.append(Spline(6033, 'inner', n_teeth=54, module=8 / 1_000, D=440 / 1_000))
-        conditions.append({'moment': 40, 'length': 40 / 1_000, 'unevenness': 1.5})
+        conditions.append({'moment': 40, 'length': 40 / 1_000})
 
     for spline, condition in zip(splines, conditions):
         print(spline)
-        print(f'{spline.tension(**condition) = }')  # TODO: наследование происходит слева-направо последовательно!
-        fitted_splines = Spline.fit(spline.standard, spline.join, 40 * 10 ** 6, 20, 20 / 1000, 1)
+        print(f'{spline.tension(**condition) = }')
+        fitted_splines = Spline.fit(spline.standard, spline.join, 40 * 10 ** 6, **condition, safety=1)
         for fs in fitted_splines: print(fs)
 
         spline = Spline(spline.standard, spline.join, **fitted_splines[0])
