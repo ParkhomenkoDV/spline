@@ -34,6 +34,9 @@ for column in gost_6033.columns: gost_6033[column] = gost_6033[column].astype('i
 
 ost_100092 = pd.read_excel(os.path.join(HERE, '100092.xlsx'), sheet_name='main', )
 
+print(ost_100092)
+exit()
+
 REFERENCES = MappingProxyType({
     1: '''Детали машин: учебник для вузов /
     [Л.А. Андриенко, Д38 Б.А. Байков, М.Н. Захаров и др.]; под ред. О.А. Ряховского. -
