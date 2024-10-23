@@ -22,7 +22,7 @@ gost_1139 = gost_1139.rename(columns={'z': 'n_teeth',
 for column in ('d', 'D', 'width', 'corner_diameter', 'corner_width', 'chamfer', 'deviation_chamfer', 'radius'):
     gost_1139[column] /= 1_000  # СИ для расчетов
 
-gost_6033 = pd.read_excel(os.path.join(HERE, '6033.xlsx'), sheet_name='common', )
+gost_6033 = pd.read_excel(os.path.join(HERE, '6033.xlsx'), sheet_name='main', )
 
 gost_6033[0] = gost_6033[0] / 1_000  # перевод D в СИ
 gost_6033 = gost_6033.set_index(0)
@@ -31,6 +31,8 @@ gost_6033 = gost_6033.rename(columns={column: float(str(column).strip().replace(
                                       for column in gost_6033.columns})
 gost_6033 = gost_6033.fillna(0)
 for column in gost_6033.columns: gost_6033[column] = gost_6033[column].astype('int32')
+
+ost_100092 = pd.read_excel(os.path.join(HERE, '100092.xlsx'), sheet_name='main', )
 
 REFERENCES = MappingProxyType({
     1: '''Детали машин: учебник для вузов /
@@ -425,6 +427,17 @@ class Spline100092:
     def average_diameter(self) -> float:
         """Средний диаметр [1, с.127]"""
         return self.module * self.n_teeth
+
+    def show(self, **kwargs) -> None:
+        plt.figure(figsize=kwargs.pop('figsize', (8, 8)))
+        plt.suptitle(kwargs.pop('suptitle', 'Spline'), fontsize=16, fontweight='bold')
+        plt.title(kwargs.pop('title', str(self)), fontsize=14)
+
+        plt.grid(kwargs.pop('grid', True))
+        plt.axis('square')
+        plt.xlabel(kwargs.pop('xlabel', 'mm'), fontsize=12), plt.ylabel(kwargs.pop('ylabel', 'mm'), fontsize=12)
+        plt.tight_layout()
+        plt.show()
 
 
 class Spline:
