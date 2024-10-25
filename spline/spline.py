@@ -7,6 +7,13 @@ from numpy import array, linspace, sqrt, nan, isnan, pi, sin, cos, tan, arcsin a
 import pandas as pd
 from matplotlib import pyplot as plt
 
+
+def angle2deg(s):
+    """Перевод угла данного в градусах, минутах и секундах, в градусы"""
+    d, m, s = map(float, s[:-1].replace("°", " ").replace("'", " ").replace('"', " ").split())
+    return d + m / 60 + s / 3_600
+
+
 HERE = os.path.dirname(__file__)
 sys.path.append(HERE)
 
@@ -37,11 +44,9 @@ ost_100092 = ost_100092.rename(columns={'z': 'n_teeth', 'g': 'alpha'})
 for column in ('module', 'd', 'da', 'da_min', 'da_max', 'da1', 'da1_min', 'da1_max', 'df', 'df1', 'r', 'r1',
                'St', 'St_min', 'St_max', 'et', 'et_min', 'et_max', 'B', 'B_min', 'B_max', 'D0', 'd0'):
     ost_100092[column] /= 1_000  # СИ для расчетов
-ost_100092['alpha'] = ost_100092['alpha'] \
-    .apply(lambda angle: map(float, angle[:-1].replace("°", " ").replace("'", " ").replace('"', "").split()))
-print(ost_100092.dtypes)
-print(ost_100092)
-exit()
+ost_100092['alpha'] = ost_100092['alpha'].apply(angle2deg)
+
+STANDARDS = MappingProxyType({1139: gost_1139, 6033: gost_6033, 100092: ost_100092})
 
 REFERENCES = MappingProxyType({
     1: '''Детали машин: учебник для вузов /
@@ -487,8 +492,6 @@ class Spline:
     """Шлицевое соединение"""
     # __slots__ = ('__standard', '__join')
 
-    STANDARDS = MappingProxyType({1139: gost_1139, 6033: gost_6033, 100092: ost_100092})
-
     TYPES = MappingProxyType({1139: 'прямобочные шлицевые соединения',
                               6033: 'шлицевые соединения с эвольвентными зубьями',
                               100092: 'шлицевые соединения треугольного профиля'})
@@ -499,11 +502,9 @@ class Spline:
                              'right': 'по боковым граням',
                              'outer': 'по наружному диаметру'})
 
-    def __init__(self, standard: int | np.integer, join: str, **parameters):
+    def __init__(self, standard: int | np.integer, join: str = None, **parameters):
         assert standard in Spline.TYPES.keys()
         self.__standard: int = int(standard)  # избавление от np.integer
-        assert join in Spline.JOIN.keys(), f'join {join} not in {Spline.JOIN}'
-        self.__join: str = join  # вид центрирования
 
         # Определение родительского класса
         if self.standard == 1139:
@@ -511,7 +512,7 @@ class Spline:
         elif self.standard == 6033:
             self.__spline = Spline6033(join, **parameters)
         elif self.standard == 100092:
-            self.__spline = Spline100092(join, **parameters)
+            self.__spline = Spline100092(**parameters)
         else:
             raise Exception(f'standard {standard} not in {Spline.TYPES}')
 
@@ -581,7 +582,11 @@ def test():
         conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
 
     if 100092:
-        splines.append(Spline(100092, n_teeth=54, module=8 / 1_000, D=440 / 1_000))
+        splines.append(Spline(100092,
+                              n_teeth=54, module=8 / 1_000, d=440 / 1_000))
+        conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
+
+    print(STANDARDS.keys())
 
     for spline, condition in zip(splines, conditions):
         print(spline)
