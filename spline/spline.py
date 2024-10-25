@@ -53,10 +53,10 @@ REFERENCES = MappingProxyType({
     [Л.А. Андриенко, Д38 Б.А. Байков, М.Н. Захаров и др.]; под ред. О.А. Ряховского. -
     4-е изд., перераб. и доп. - 
     Москва: Издательство МГТУ им. Н.Э. Баумана, 2014. - 465, [7] с.: ил''',
-    2: '''''',
-
 })
 
+
+#TODO: сделать словарь терминов!!!
 
 def rotate(point, angle):
     """Поворот точки"""
@@ -457,12 +457,12 @@ class Spline100092:
     @property
     def alpha(self) -> float:
         """Угол профиля зуба [рад]"""
-        return self.__alpha
+        return self.__alpha * pi / 180 # TODO: тут угол полного раскрытия зуба, а в госте 6033 непонятно!
 
     @property
     def height(self) -> float:
         """Высота контакта [1, с.127]"""
-        return (self.D - self.d) / 2
+        return (self.df1 - self.da1) / 2
 
     @property
     def average_diameter(self) -> float:
@@ -517,9 +517,11 @@ class Spline:
             raise Exception(f'standard {standard} not in {Spline.TYPES}')
 
     def __str__(self):
+        """Обозначение шлицевого соединения"""
         return str(self.__spline)
 
     def __getattr__(self, item):
+        """Работа с атрибтами шлицевого соединения"""
         if item in dir(self.__spline):
             return getattr(self.__spline, item)
         else:
@@ -531,7 +533,7 @@ class Spline:
 
     @property
     def join(self) -> str:
-        """Центрирования"""
+        """Центрирование"""
         return self.__join
 
     @classmethod
@@ -541,6 +543,7 @@ class Spline:
             safety: int | float | np.number = 1) -> tuple[dict[str: float], ...]:
         """Подбор шлицевого соединения [1, с.126]"""
         assert standard in Spline.TYPES.keys()
+
         result = list()
         if standard == 1139:
             for _, row in gost_1139.iterrows():
@@ -562,7 +565,8 @@ class Spline:
                                        'safety': (max_tension / tension[0] / safety,
                                                   max_tension / tension[1] / safety)})
         elif standard == 100092:
-            pass
+            for _, row in ost_100092.iterrows():
+                spline = Spline(standard, n_teeth=row['n_teeth'], modul=row['d'], D=row['D'])
         return tuple(result)
 
 
@@ -583,7 +587,7 @@ def test():
 
     if 100092:
         splines.append(Spline(100092,
-                              n_teeth=54, module=8 / 1_000, d=440 / 1_000))
+                              n_teeth=40, module=0.5 / 1_000, d=20 / 1_000))
         conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
 
     print(STANDARDS.keys())
