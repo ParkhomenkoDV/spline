@@ -39,13 +39,23 @@ gost_6033 = gost_6033.fillna(0)
 for column in gost_6033.columns: gost_6033[column] = gost_6033[column].astype('int32')
 
 ost_100092 = pd.read_excel(os.path.join(HERE, '100092.xlsx'), sheet_name='main', )
-ost_100092 = ost_100092.rename(columns={'z': 'n_teeth', 'g': 'gamma'})
-for column in ('module', 'd', 'da', 'da_min', 'da_max', 'da1', 'da1_min', 'da1_max', 'df', 'df1', 'r', 'r1',
-               'St', 'St_min', 'St_max', 'et', 'et_min', 'et_max', 'B', 'B_min', 'B_max', 'D0', 'd0'):
+ost_100092 = ost_100092.drop(['et', 'et_min', 'et_max', 'B', 'B_min', 'B_max'], axis=1)
+ost_100092 = ost_100092.rename(columns={'z': 'n_teeth', 'g': 'gamma', 
+                                        'df1': 'Df', 'da1': 'Da', 'da1_min': 'Da_min', 'da1_max': 'Da_max', 
+                                        'r1': 'R', 'St': 'circumferential_step', 
+                                        'St_min': 'circumferential_step_min', 
+                                        'St_max': 'circumferential_step_max'})
+for column in ('module', 'd', 'da', 'da_min', 'da_max', 'Da', 'Da_min', 'Da_max', 'df', 'Df', 'r', 'R',
+               'circumferential_step', 'circumferential_step_min', 'circumferential_step_max', 'D0', 'd0'):
     ost_100092[column] /= 1_000  # СИ для расчетов
 ost_100092['gamma'] = ost_100092['gamma'].apply(angle2deg)
 
-STANDARDS = MappingProxyType({1139: gost_1139, 6033: gost_6033, 100092: ost_100092})
+STANDARDS = MappingProxyType({'1139': {'description': 'прямобочные шлицевые соединения', 
+                                     'standard': gost_1139},
+                              '6033': {'description': 'шлицевые соединения с эвольвентными зубьями',
+                                     'standard': gost_6033}, 
+                              '100092': {'description': 'шлицевые соединения треугольного профиля',
+                                       'standard': ost_100092,} })
 
 REFERENCES = MappingProxyType({
     1: '''Детали машин: учебник для вузов /
@@ -78,19 +88,54 @@ VOCABULARY = MappingProxyType({
         'unit': 'm',
         'type': (float, np.floating),
         'assert': (lambda module: '' if 0 < module else 'module {module} <= 0',), },
+    'd': {
+        'description': 'номинальный диаметр вала',
+        'unit': 'm',
+        'type': (int, float, np.number),
+        'assert': (lambda d: '' if 0 < d else 'module {d} <= 0',), },
+    'D': {
+        'description': 'номинальный диаметр втулки',
+        'unit': 'm',
+        'type': (int, float, np.number),
+        'assert': (lambda D: '' if 0 < D else 'module {D} <= 0',), },
+    'df': {
+        'description': 'диаметр впадин вала',
+        'unit': 'm',
+        'type': (int, float, np.number),
+        'assert': (lambda df: '' if 0 < df else 'module {df} <= 0',), },
+    'Df': {
+        'description': 'диаметр впадин втулки',
+        'unit': 'm',
+        'type': (int, float, np.number),
+        'assert': (lambda Df: '' if 0 < Df else 'module {Df} <= 0',), },
+    'da': {
+        'description': 'диаметр вершин вала',
+        'unit': 'm',
+        'type': (int, float, np.number),
+        'assert': (lambda da: '' if 0 < da else 'module {da} <= 0',), },
+    'Da': {
+        'description': 'диаметр вершин втулки',
+        'unit': 'm',
+        'type': (int, float, np.number),
+        'assert': (lambda Da: '' if 0 < Da else 'module {Da} <= 0',), },
     'gamma': {
         'description': 'угол раскрытия зуба',
         'unit': 'rad',
         'type': (int, float, np.number),
         'assert': (lambda gamma: '' if 0 < gamma else 'module {gamma} <= 0',), },
+    'width': {
+        'description': 'ширина зуба',
+        'unit': 'm',
+        'type': (int, float, np.number),
+        'assert': (lambda width: '' if 0 < width else 'module {width} <= 0',), },   
 })
 
 
 # вид центрирования
 JOIN = MappingProxyType({'inner': 'по внутреннему диаметру',
-                            'left': 'по боковым граням',
-                            'right': 'по боковым граням',
-                            'outer': 'по наружному диаметру'})
+                         'left': 'по боковым граням',
+                         'right': 'по боковым граням',
+                         'outer': 'по наружному диаметру'})
 
 def rotate(point, angle):
     """Поворот точки"""
@@ -100,7 +145,6 @@ def rotate(point, angle):
 
 class Spline1139:
     """Шлицевое соединение по ГОСТ 1139"""
-    __STANDARD = 1139
 
     __slots__ = ('__join', '__n_teeth', '__d', '__D',  # необходимые атрибуты
                  '__width', '__corner_diameter', '__corner_width', '__chamfer', '__chamfer_deviation', '__radius')
@@ -116,8 +160,8 @@ class Spline1139:
                 for key, value in row.to_dict().items(): setattr(self, f'_{Spline1139.__name__}__{key}', value)
                 break
         else:
-            raise Exception(f'n_teeth={n_teeth}, d={d}, D={D} not in standard {Spline1139.__STANDARD}. '
-                            f'Look spline.gost_{Spline1139.__STANDARD}')
+            raise Exception(f'n_teeth={n_teeth}, d={d}, D={D} not in standard {self.standard}. '
+                            f'Look spline.gost_{self.standard}')
 
     def __str__(self) -> str:
         """Условное обозначение"""
@@ -130,14 +174,13 @@ class Spline1139:
             return f'b-{self.n_teeth:.0f}x{self.d * mm:.0f}x{self.D * mm:.0f}x{self.width * mm:.0f}'
 
     @property
-    def join(self) -> str:
-        """Центрирование"""
-        return self.__join
+    def standard(self) -> int: return self.__class__.__name__[6:]
 
     @property
-    def n_teeth(self) -> int:
-        """Количество зубьев"""
-        return int(self.__n_teeth)
+    def join(self) -> str: return self.__join
+
+    @property
+    def n_teeth(self) -> int: return int(self.__n_teeth)
 
     @property
     def d(self) -> float:
@@ -193,7 +236,7 @@ class Spline1139:
         """Напряжение смятия [1, с.126]"""
         assert isinstance(moment, (int, float, np.number))
         assert isinstance(length, (int, float, np.number)) and 0 < length
-        tension = 2 * moment * array((1.1, 1.5)) / (self.average_diameter * self.n_teeth * self.height * length)
+        tension = 2 * abs(moment) * array((1.1, 1.5)) / (self.average_diameter * self.n_teeth * self.height * length)
         return float(tension[0]), float(tension[1])
 
     def show(self, **kwargs) -> None:
@@ -264,7 +307,6 @@ class Spline1139:
 
 class Spline6033:
     """Шлицевое соединение по ГОСТ 6033"""
-    __STANDARD = 6033
 
     __slots__ = ('__join', '__n_teeth', '__module', '__D')
 
@@ -274,19 +316,23 @@ class Spline6033:
         assert join in ('outer', 'left', 'right')  # центрирование внешнее, боковое
         self.__join = join
 
-        assert module in gost_6033.columns, f'module {module} not in standard {Spline6033.__STANDARD}'
+        assert module in gost_6033.columns, f'module {module} not in standard {self.standard}'
         series = gost_6033[module]  # фильтрация по модулю
         dct = series[series > 0].to_dict()  # фильтрация по существованию и преобразование в словарь
         assert dct.get(D, nan) == n_teeth and not isnan(n_teeth), \
-            (f'n_teeth={n_teeth}, module={module}, D={D} not in standard {Spline6033.__STANDARD}. '
-             f'Look spline.gost_{Spline6033.__STANDARD}')
+            (f'n_teeth={n_teeth}, module={module}, D={D} not in standard {self.standard}. '
+             f'Look spline.gost_{self.standard}')
 
         self.__n_teeth, self.__module, self.__D = n_teeth, module, D
 
     def __str__(self) -> str:
         """Условное обозначение"""
         mm = 1_000  # перевод в мм
-        return f'{self.D * mm:.0f}x{self.module * mm:.2f} ГОСТ {Spline6033.__STANDARD}-80'
+        return f'{self.D * mm:.0f}x{self.module * mm:.2f} ГОСТ {self.standard}-80'
+
+    @property
+    def standard(self) -> int:
+        return self.__class__.__name__[6:]
 
     @property
     def join(self) -> str:
@@ -405,7 +451,7 @@ class Spline6033:
         """Напряжение смятия [1, с.130]"""
         assert isinstance(moment, (int, float, np.number))
         assert isinstance(length, (int, float, np.number)) and 0 < length
-        tension = 2 * moment * array((0.67, 0.92)) / (self.average_diameter * self.n_teeth * self.height * length)
+        tension = 2 * abs(moment) * array((0.67, 0.92)) / (self.average_diameter * self.n_teeth * self.height * length)
         return float(tension[0]), float(tension[1])
 
     def show(self, **kwargs) -> None:
@@ -466,49 +512,67 @@ class Spline6033:
 
 class Spline100092:
     """Шлицевое соединение по ОСТ 100092"""
-    __STANDARD = 100092
 
-    # __slots__ = ()
+    __slots__ = ('__join', '__n_teeth', '__module', '__d', 
+                '__da', '__da_min', '__da_max', '__df', '__d0',
+                '__Da', '__Da_min', '__Da_max', '__Df', '__D0',
+                 '__r', '__R', '__gamma',
+                 '__circumferential_step', '__circumferential_step_min', '__circumferential_step_max')
 
-    def __init__(self, n_teeth: int, module: float, d: float, **kwargs):
+    def __init__(self, join: str, n_teeth: int, module: float, d: float, **kwargs):
+        assert isinstance(join, str)
+        join = join.strip().lower()
+        assert join in ('left', 'right')  # центрирование боковое
+        self.__join = join
+
         for _, row in ost_100092.iterrows():
             if n_teeth == row['n_teeth'] and module == row['module'] and d == row['d']:
                 for key, value in row.to_dict().items(): setattr(self, f'_{Spline100092.__name__}__{key}', value)
                 break
         else:
-            raise Exception(f'n_teeth={n_teeth}, module={module}, d={d} not in standard {Spline100092.__STANDARD}. '
-                            f'Look spline.ost_{Spline100092.__STANDARD}')
+            raise Exception(f'n_teeth={n_teeth}, module={module}, d={d} not in standard {self.standard}. '
+                            f'Look spline.ost_{self.standard}')
 
     def __str__(self) -> str:
-        return f'ОСТ {Spline100092.__STANDARD}-73'
+        return f'ОСТ {self.standard}-73'
 
     @property
-    def join(self) -> str:
-        """Вид центрирования"""
-        return 'left'
+    def standard(self) -> int: return self.__class__.__name__[6:]
 
     @property
-    def n_teeth(self):
-        """Количество зубьев"""
-        return int(self.__n_teeth)
+    def join(self) -> str: return self.__join
 
     @property
-    def module(self):
-        return self.__module
+    def n_teeth(self): return int(self.__n_teeth)
 
     @property
-    def d(self):
-        return self.__d
+    def module(self): return self.__module
 
     @property
-    def gamma(self) -> float:
-        """Угол профиля зуба [рад]"""
-        return self.__gamma * (pi / 180)
+    def d(self): return self.__d
+
+    @property
+    def D(self): return self.__d
+    
+    @property
+    def df(self) -> float: return self.__df
+
+    @property
+    def Da(self) -> float: return self.__Da
+
+    @property
+    def da(self) -> float: return self.__da
+
+    @property
+    def Df(self) -> float: return self.__Df
+
+    @property
+    def gamma(self) -> float: return self.__gamma * (pi / 180)
 
     @property
     def height(self) -> float:
         """Высота контакта [1, с.127]"""
-        return (self.__df1 - self.__da1) / 2
+        return (self.__Df - self.__Da) / 2
 
     @property
     def average_diameter(self) -> float:
@@ -519,13 +583,55 @@ class Spline100092:
         """Напряжение смятия [1, с.126]"""
         assert isinstance(moment, (int, float, np.number))
         assert isinstance(length, (int, float, np.number)) and 0 < length
-        tension = 2 * moment * array((1.1, 1.5)) / (self.average_diameter * self.n_teeth * self.height * length)
+        tension = 2 * abs(moment) * array((1.1, 1.5)) / (self.average_diameter * self.n_teeth * self.height * length)
         return float(tension[0]), float(tension[1])
 
     def show(self, **kwargs) -> None:
+        """Визуализация сечения шлица"""
+        mm = 1_000
+        df, Da, d, da, Df = self.df*mm, self.Da*mm, self.d * mm, self.da*mm, self.Df * mm
+
+        a = pi / self.n_teeth  # угол раскрытия на 1 зуб
+        # коэффициенты прямой наклона левой грани зуба вала
+        k, b = tan(pi / 2 - self.gamma / 2), d / 2 * cos(a / 2) + tan(pi / 2 - self.gamma/2) * (d / 2 * sin(a / 2))
+        x_df = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - df ** 2 / 4))) / (1 + k ** 2)
+        x_Da = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - Da ** 2 / 4))) / (1 + k ** 2)
+        x_da = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - da ** 2 / 4))) / (1 + k ** 2)
+        x_Df = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - Df ** 2 / 4))) / (1 + k ** 2)
+
         plt.figure(figsize=kwargs.pop('figsize', (8, 8)))
         plt.suptitle(kwargs.pop('suptitle', 'Spline'), fontsize=16, fontweight='bold')
         plt.title(kwargs.pop('title', str(self)), fontsize=14)
+
+        circle = linspace(0, 2 * pi, 360, endpoint=True, dtype='float16')
+        arc_df = linspace(-pi / self.n_teeth - asin(2 * x_df / df), pi / self.n_teeth + asin(2 * x_df / df),
+                          360 // self.n_teeth, endpoint=True) + pi / self.n_teeth
+        arc_Da = linspace(-pi / self.n_teeth - asin(2 * x_Da / Da), pi / self.n_teeth + asin(2 * x_Da / Da),
+                          360 // self.n_teeth, endpoint=True) + pi / self.n_teeth
+        arc_da = linspace(-asin(2 * x_da / da), asin(2 * x_da / da), 360 // self.n_teeth, endpoint=True)
+        arc_Df = linspace(-asin(2 * x_Df / Df), asin(2 * x_Df / Df), 360 // self.n_teeth, endpoint=True)
+
+        plt.plot(d / 2 * cos(circle), d / 2 * sin(circle), color='orange', ls='dashdot', linewidth=1.5)
+        for angle in linspace(pi / 2, 5 * pi / 2, self.n_teeth + 1, endpoint=True):
+            # оси
+            plt.plot(*rotate(array(((0, 0), (0, Df / 2))), angle),
+                     color='orange', ls='dashdot', linewidth=1.5)
+            plt.plot(*rotate(array(((0, 0), (0, Df / 2))), angle + pi / self.n_teeth),
+                     color='orange', ls='dashdot', linewidth=1.5)
+            # дуги
+            plt.plot(df / 2 * cos(arc_df + angle), df / 2 * sin(arc_df + angle),
+                     color='black', ls='solid', linewidth=2)
+            plt.plot(Da / 2 * cos(arc_Da + angle), Da / 2 * sin(arc_Da + angle),
+                     color='black', ls='solid', linewidth=2)
+            plt.plot(da / 2 * cos(arc_da + angle), da / 2 * sin(arc_da + angle),
+                     color='black', ls='solid', linewidth=2)
+            plt.plot(Df / 2 * cos(arc_Df + angle), Df / 2 * sin(arc_Df + angle),
+                     color='black', ls='solid', linewidth=2)
+            
+            for lr in (-1, +1):
+                plt.plot(*rotate(array(((lr * x_Df, lr * x_df), (k * x_Df + b, k * x_df + b))),
+                                 angle=angle - pi / 2),
+                         color='black', ls='solid', linewidth=2)
 
         plt.grid(kwargs.pop('grid', True))
         plt.axis('square')
@@ -536,25 +642,18 @@ class Spline100092:
 
 class Spline:
     """Шлицевое соединение"""
-    __slots__ = ('__standard', '__join', '__spline')
-
-    TYPES = MappingProxyType({1139: 'прямобочные шлицевые соединения',
-                              6033: 'шлицевые соединения с эвольвентными зубьями',
-                              100092: 'шлицевые соединения треугольного профиля'})
+    __slots__ = ('__join', '__spline')
 
     def __init__(self, standard: int | np.integer, join: str = None, **parameters):
-        assert standard in Spline.TYPES.keys()
-        self.__standard: int = int(standard)  # избавление от np.integer
-
         # Определение родительского класса
-        if self.standard == 1139:
+        if standard == '1139':
             self.__spline = Spline1139(join, **parameters)
-        elif self.standard == 6033:
+        elif standard == '6033':
             self.__spline = Spline6033(join, **parameters)
-        elif self.standard == 100092:
-            self.__spline = Spline100092(**parameters)
+        elif standard == '100092':
+            self.__spline = Spline100092(join, **parameters)
         else:
-            raise Exception(f'standard {standard} not in {Spline.TYPES}')
+            raise Exception(f'standard {standard} not in {STANDARDS.keys()}')
 
     def __str__(self):
         """Обозначение шлицевого соединения"""
@@ -569,7 +668,7 @@ class Spline:
 
     @property
     def standard(self) -> int:
-        return self.__standard
+        return self.__spline.__class__.__STANDARD
 
     @property
     def join(self) -> str:
@@ -577,15 +676,16 @@ class Spline:
         return self.__join
 
     @classmethod
-    def fit(cls, standard: int | np.integer, join: str,
+    def fit(cls, standard: str, join: str,
             max_tension: int | float | np.number,
             moment: int | float | np.number, length: int | float | np.number,
             safety: int | float | np.number = 1) -> tuple[dict[str: float], ...]:
         """Подбор шлицевого соединения [1, с.126]"""
-        assert standard in Spline.TYPES.keys()
+        assert standard in STANDARDS.keys()
+        print(standard in STANDARDS.keys())
 
         result = list()
-        if standard == 1139:
+        if standard == '1139':
             for _, row in gost_1139.iterrows():
                 spline = Spline(standard, join, n_teeth=row['n_teeth'], d=row['d'], D=row['D'])
                 tension = spline.tension(moment, length)
@@ -593,7 +693,7 @@ class Spline:
                     result.append({'n_teeth': int(row['n_teeth']), 'd': float(row['d']), 'D': float(row['D']),
                                    'safety': (max_tension / tension[0] / safety,
                                               max_tension / tension[1] / safety)})
-        elif standard == 6033:
+        elif standard == '6033':
             for module in gost_6033.columns:
                 series = gost_6033[module]
                 dct = series[series > 0].to_dict()
@@ -604,9 +704,9 @@ class Spline:
                         result.append({'n_teeth': int(n_teeth), 'module': float(module), 'D': float(D),
                                        'safety': (max_tension / tension[0] / safety,
                                                   max_tension / tension[1] / safety)})
-        elif standard == 100092:
+        elif standard == '100092':
             for _, row in ost_100092.iterrows():
-                spline = Spline(standard, n_teeth=row['n_teeth'], module=row['module'], d=row['d'])
+                spline = Spline(standard, join, n_teeth=row['n_teeth'], module=row['module'], d=row['d'])
                 tension = spline.tension(moment, length)
                 if np.mean(tension) * safety <= max_tension:
                     result.append({'n_teeth': int(row['n_teeth']), 'module': float(row['module']), 'd': float(row['d']),
@@ -621,17 +721,17 @@ def test():
     splines, conditions = list(), list()
 
     if 1139:
-        splines.append(Spline(1139, random.choice(('inner', 'outer', 'left', 'right')),
+        splines.append(Spline('1139', random.choice(('inner', 'outer', 'left', 'right')),
                               n_teeth=6, d=23 / 1_000, D=26 / 1_000))
         conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
 
     if 6033:
-        splines.append(Spline(6033, random.choice(('outer', 'left', 'right')),
+        splines.append(Spline('6033', random.choice(('outer', 'left', 'right')),
                               n_teeth=54, module=8 / 1_000, D=440 / 1_000))
         conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
 
     if 100092:
-        splines.append(Spline(100092,
+        splines.append(Spline('100092', random.choice(('left', 'right')),
                               n_teeth=40, module=0.5 / 1_000, d=20 / 1_000))
         conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
 
@@ -643,8 +743,11 @@ def test():
         fitted_splines = Spline.fit(spline.standard, spline.join, 40 * 10 ** 6, **condition, safety=1)
         for fs in fitted_splines: print(fs)
 
-        spline = Spline(spline.standard, spline.join, **fitted_splines[0])
-        spline.show()
+        if fitted_splines:
+            spline = Spline(spline.standard, spline.join, **fitted_splines[0])
+            spline.show()
+        else:
+            print('No solution')
 
 
 if __name__ == '__main__':
