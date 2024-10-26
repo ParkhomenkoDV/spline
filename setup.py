@@ -19,4 +19,5 @@ setup(
     packages=find_packages(),
     python_requires='>=3.8',
     install_requires=install_requires,
+    package_data={'spline':['1139.xlsx', '6033.xlsx', '100092.xlsx'], },
 )
