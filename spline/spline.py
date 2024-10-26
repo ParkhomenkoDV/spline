@@ -682,7 +682,6 @@ class Spline:
             safety: int | float | np.number = 1) -> tuple[dict[str: float], ...]:
         """Подбор шлицевого соединения [1, с.126]"""
         assert standard in STANDARDS.keys()
-        print(standard in STANDARDS.keys())
 
         result = list()
         if standard == '1139':
