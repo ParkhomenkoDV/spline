@@ -8,6 +8,14 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 
+REFERENCES = MappingProxyType({
+    1: '''Детали машин: учебник для вузов /
+    [Л.А. Андриенко, Д38 Б.А. Байков, М.Н. Захаров и др.]; под ред. О.А. Ряховского. -
+    4-е изд., перераб. и доп. - 
+    Москва: Издательство МГТУ им. Н.Э. Баумана, 2014. - 465, [7] с.: ил''',
+})
+
+
 def angle2deg(s):
     """Перевод угла данного в градусах, минутах и секундах, в градусы"""
     d, m, s = map(float, s[:-1].replace("°", " ").replace("'", " ").replace('"', " ").split())
@@ -56,13 +64,6 @@ STANDARDS = MappingProxyType({'1139': {'description': 'прямобочные ш
                                      'standard': gost_6033}, 
                               '100092': {'description': 'шлицевые соединения треугольного профиля',
                                        'standard': ost_100092,} })
-
-REFERENCES = MappingProxyType({
-    1: '''Детали машин: учебник для вузов /
-    [Л.А. Андриенко, Д38 Б.А. Байков, М.Н. Захаров и др.]; под ред. О.А. Ряховского. -
-    4-е изд., перераб. и доп. - 
-    Москва: Издательство МГТУ им. Н.Э. Баумана, 2014. - 465, [7] с.: ил''',
-})
 
 # словарь терминов их описания, единицы измерения и граничные значения #TODO: 
 VOCABULARY = MappingProxyType({
@@ -130,7 +131,6 @@ VOCABULARY = MappingProxyType({
         'assert': (lambda width: '' if 0 < width else 'module {width} <= 0',), },   
 })
 
-
 # вид центрирования
 JOIN = MappingProxyType({'inner': 'по внутреннему диаметру',
                          'left': 'по боковым граням',
@@ -161,7 +161,7 @@ class Spline1139:
                 break
         else:
             raise Exception(f'n_teeth={n_teeth}, d={d}, D={D} not in standard {self.standard}. '
-                            f'Look spline.gost_{self.standard}')
+                            f'Look spline.STANDARDS["{self.standard}"]')
 
     def __str__(self) -> str:
         """Условное обозначение"""
@@ -321,7 +321,7 @@ class Spline6033:
         dct = series[series > 0].to_dict()  # фильтрация по существованию и преобразование в словарь
         assert dct.get(D, nan) == n_teeth and not isnan(n_teeth), \
             (f'n_teeth={n_teeth}, module={module}, D={D} not in standard {self.standard}. '
-             f'Look spline.gost_{self.standard}')
+             f'Look spline.STANDARDS["{self.standard}"]')
 
         self.__n_teeth, self.__module, self.__D = n_teeth, module, D
 
@@ -531,7 +531,7 @@ class Spline100092:
                 break
         else:
             raise Exception(f'n_teeth={n_teeth}, module={module}, d={d} not in standard {self.standard}. '
-                            f'Look spline.ost_{self.standard}')
+                            f'Look spline.STANDARDS["{self.standard}"]')
 
     def __str__(self) -> str:
         return f'ОСТ {self.standard}-73'
@@ -667,13 +667,10 @@ class Spline:
             raise AttributeError(f'{item}')
 
     @property
-    def standard(self) -> int:
-        return self.__spline.__class__.__STANDARD
+    def standard(self) -> str: return self.__spline.standard
 
     @property
-    def join(self) -> str:
-        """Центрирование"""
-        return self.__join
+    def join(self) -> str: return self.__join
 
     @classmethod
     def fit(cls, standard: str, join: str,
