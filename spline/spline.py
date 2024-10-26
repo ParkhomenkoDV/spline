@@ -22,11 +22,10 @@ gost_1139_light_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_na
 gost_1139_middle_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Средняя серия', )
 gost_1139_heavy_series = pd.read_excel(os.path.join(HERE, '1139.xlsx'), sheet_name='Тяжелая серия', )
 gost_1139 = pd.concat([gost_1139_light_series, gost_1139_middle_series, gost_1139_heavy_series], axis=0, )
-gost_1139 = gost_1139.rename(columns={'z': 'n_teeth',
-                                      'b': 'width',
+gost_1139 = gost_1139.rename(columns={'z': 'n_teeth', 'b': 'width',
                                       'd1': 'corner_diameter', 'a': 'corner_width',
-                                      'c': 'chamfer', 'dc': 'deviation_chamfer', 'r': 'radius'}, )
-for column in ('d', 'D', 'width', 'corner_diameter', 'corner_width', 'chamfer', 'deviation_chamfer', 'radius'):
+                                      'c': 'chamfer', 'dc': 'chamfer_deviation', 'r': 'radius'}, )
+for column in ('d', 'D', 'width', 'corner_diameter', 'corner_width', 'chamfer', 'chamfer_deviation', 'radius'):
     gost_1139[column] /= 1_000  # СИ для расчетов
 
 gost_6033 = pd.read_excel(os.path.join(HERE, '6033.xlsx'), sheet_name='main', )
@@ -40,11 +39,11 @@ gost_6033 = gost_6033.fillna(0)
 for column in gost_6033.columns: gost_6033[column] = gost_6033[column].astype('int32')
 
 ost_100092 = pd.read_excel(os.path.join(HERE, '100092.xlsx'), sheet_name='main', )
-ost_100092 = ost_100092.rename(columns={'z': 'n_teeth', 'g': 'alpha'})
+ost_100092 = ost_100092.rename(columns={'z': 'n_teeth', 'g': 'gamma'})
 for column in ('module', 'd', 'da', 'da_min', 'da_max', 'da1', 'da1_min', 'da1_max', 'df', 'df1', 'r', 'r1',
                'St', 'St_min', 'St_max', 'et', 'et_min', 'et_max', 'B', 'B_min', 'B_max', 'D0', 'd0'):
     ost_100092[column] /= 1_000  # СИ для расчетов
-ost_100092['alpha'] = ost_100092['alpha'].apply(angle2deg)
+ost_100092['gamma'] = ost_100092['gamma'].apply(angle2deg)
 
 STANDARDS = MappingProxyType({1139: gost_1139, 6033: gost_6033, 100092: ost_100092})
 
@@ -55,8 +54,43 @@ REFERENCES = MappingProxyType({
     Москва: Издательство МГТУ им. Н.Э. Баумана, 2014. - 465, [7] с.: ил''',
 })
 
+# словарь терминов их описания, единицы измерения и граничные значения #TODO: 
+VOCABULARY = MappingProxyType({
+    'standard': {
+        'description': 'cтандарт',
+        'unit': '',
+        'type': (int, np.integer),
+        'assert': (lambda standard: '' if standard in STANDARDS.keys()
+        else 'standard {standard} not in {STANDARDS.keys()}',), },
+    'join': {
+        'description': 'вид центрирования',
+        'unit': '',
+        'type': (str, ),
+        'assert': (lambda join: '' if join in ("inner", "outer", "left", "right")
+        else 'join {join} not in {("inner", "outer", "left", "right")}',), },
+    'n_teeth': {
+        'description': 'количество зубьев',
+        'unit': '',
+        'type': (int, np.integer),
+        'assert': (lambda n_teeth: '' if 0 < n_teeth else 'n_teeth {n_teeth} <= 0',), },
+    'module': {
+        'description': 'модуль зубьев',
+        'unit': 'm',
+        'type': (float, np.floating),
+        'assert': (lambda module: '' if 0 < module else 'module {module} <= 0',), },
+    'gamma': {
+        'description': 'угол раскрытия зуба',
+        'unit': 'rad',
+        'type': (int, float, np.number),
+        'assert': (lambda gamma: '' if 0 < gamma else 'module {gamma} <= 0',), },
+})
 
-#TODO: сделать словарь терминов!!!
+
+# вид центрирования
+JOIN = MappingProxyType({'inner': 'по внутреннему диаметру',
+                            'left': 'по боковым граням',
+                            'right': 'по боковым граням',
+                            'outer': 'по наружному диаметру'})
 
 def rotate(point, angle):
     """Поворот точки"""
@@ -69,7 +103,7 @@ class Spline1139:
     __STANDARD = 1139
 
     __slots__ = ('__join', '__n_teeth', '__d', '__D',  # необходимые атрибуты
-                 '__width', '__corner_diameter', '__corner_width', '__chamfer', '__deviation_chamfer', '__radius')
+                 '__width', '__corner_diameter', '__corner_width', '__chamfer', '__chamfer_deviation', '__radius')
 
     def __init__(self, join: str, n_teeth: int, d: float, D: float, **kwargs):
         assert isinstance(join, str)
@@ -136,9 +170,9 @@ class Spline1139:
         return self.__chamfer
 
     @property
-    def deviation_chamfer(self) -> tuple[float, float]:
+    def chamfer_deviation(self) -> tuple[float, float]:
         """Отклонение фаски"""
-        return 0, self.__deviation_chamfer
+        return 0, self.__chamfer_deviation
 
     @property
     def radius(self) -> float:
@@ -280,6 +314,11 @@ class Spline6033:
     def alpha(self) -> float:
         """Угол профиля зуба [рад]"""
         return pi / 6
+    
+    @property
+    def gamma()->float:
+        """Угол раскрытия зуба [рад]"""
+        return pi / 6 * 2
 
     @property
     def circumferential_step(self) -> float:
@@ -429,6 +468,8 @@ class Spline100092:
     """Шлицевое соединение по ОСТ 100092"""
     __STANDARD = 100092
 
+    # __slots__ = ()
+
     def __init__(self, n_teeth: int, module: float, d: float, **kwargs):
         for _, row in ost_100092.iterrows():
             if n_teeth == row['n_teeth'] and module == row['module'] and d == row['d']:
@@ -440,6 +481,11 @@ class Spline100092:
 
     def __str__(self) -> str:
         return f'ОСТ {Spline100092.__STANDARD}-73'
+
+    @property
+    def join(self) -> str:
+        """Вид центрирования"""
+        return 'left'
 
     @property
     def n_teeth(self):
@@ -455,14 +501,14 @@ class Spline100092:
         return self.__d
 
     @property
-    def alpha(self) -> float:
+    def gamma(self) -> float:
         """Угол профиля зуба [рад]"""
-        return self.__alpha * pi / 180 # TODO: тут угол полного раскрытия зуба, а в госте 6033 непонятно!
+        return self.__gamma * (pi / 180)
 
     @property
     def height(self) -> float:
         """Высота контакта [1, с.127]"""
-        return (self.df1 - self.da1) / 2
+        return (self.__df1 - self.__da1) / 2
 
     @property
     def average_diameter(self) -> float:
@@ -490,17 +536,11 @@ class Spline100092:
 
 class Spline:
     """Шлицевое соединение"""
-    # __slots__ = ('__standard', '__join')
+    __slots__ = ('__standard', '__join', '__spline')
 
     TYPES = MappingProxyType({1139: 'прямобочные шлицевые соединения',
                               6033: 'шлицевые соединения с эвольвентными зубьями',
                               100092: 'шлицевые соединения треугольного профиля'})
-
-    # вид центрирования
-    JOIN = MappingProxyType({'inner': 'по внутреннему диаметру',
-                             'left': 'по боковым граням',
-                             'right': 'по боковым граням',
-                             'outer': 'по наружному диаметру'})
 
     def __init__(self, standard: int | np.integer, join: str = None, **parameters):
         assert standard in Spline.TYPES.keys()
@@ -566,7 +606,12 @@ class Spline:
                                                   max_tension / tension[1] / safety)})
         elif standard == 100092:
             for _, row in ost_100092.iterrows():
-                spline = Spline(standard, n_teeth=row['n_teeth'], modul=row['d'], D=row['D'])
+                spline = Spline(standard, n_teeth=row['n_teeth'], module=row['module'], d=row['d'])
+                tension = spline.tension(moment, length)
+                if np.mean(tension) * safety <= max_tension:
+                    result.append({'n_teeth': int(row['n_teeth']), 'module': float(row['module']), 'd': float(row['d']),
+                                   'safety': (max_tension / tension[0] / safety,
+                                              max_tension / tension[1] / safety)})
         return tuple(result)
 
 
