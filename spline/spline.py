@@ -223,6 +223,12 @@ class Spline1139:
         return self.__radius
 
     @property
+    def resistance_moment(self):
+        """Момент сопротивления [1, с. 365]"""
+        return ((pi * self.d ** 4 - self.width * self.n_teeth * (self.D - self.d) * (self.D + self.d) ** 2) /
+                (32 * self.D))
+
+    @property
     def height(self) -> float:
         """Высота контакта [1, с.127]"""
         return (self.D - self.d) / 2 - 2 * self.chamfer
@@ -402,12 +408,12 @@ class Spline6033:
         return self.module * self.n_teeth + 2 * self.original_contour_offset + 1.1 * self.module
 
     @property
-    def valleys_D(self) -> tuple[float, float]:
+    def Df(self) -> tuple[float, float]:
         """Диаметр впадин втулки"""
         return self.D, self.D + 0.44 * self.module
 
     @property
-    def peaks_D(self) -> float:
+    def Da(self) -> float:
         """Диаметр вершин втулки"""
         return self.D - 2 * self.module
 
@@ -417,12 +423,12 @@ class Spline6033:
         return 0.5 * (self.D - self.module * self.n_teeth - 1.1 * self.module)
 
     @property
-    def valleys_d(self) -> tuple[float, float]:
+    def df(self) -> tuple[float, float]:
         """Диаметр впадин вала"""
         return self.D - 2.76 * self.module, self.D - 2.2 * self.module
 
     @property
-    def peaks_d(self) -> float:
+    def da(self) -> float:
         """Диаметр вершин вала"""
         if self.join in ('left', 'right'): return self.D - 0.2 * self.module
         if self.join == 'outer': return self.D
@@ -436,6 +442,13 @@ class Spline6033:
     def radial_clearance(self) -> float:
         """Радиальный зазор"""
         return 0.1 * self.module
+
+    @property
+    def resistance_moment(self):
+        """Момент сопротивления [1, с. 365]"""
+        df = np.mean(self.df)
+        return ((pi * df ** 4 - self.circumferential_step * self.n_teeth * (self.da - df) * (self.da + df) ** 2) /
+                (32 * self.da))
 
     @property
     def height(self) -> float:
@@ -457,9 +470,9 @@ class Spline6033:
     def show(self, **kwargs) -> None:
         """Визуализация сечения шлица"""
         mm = 1_000
-        df, da = np.mean(self.valleys_d) * mm, self.peaks_d * mm
+        df, da = np.mean(self.df) * mm, self.da * mm
         dxm = (self.d + 2 * self.original_contour_offset) * mm
-        Da, Df = self.peaks_D * mm, np.mean(self.valleys_D) * mm
+        Da, Df = self.Da * mm, np.mean(self.Df) * mm
 
         a = pi / self.n_teeth  # угол раскрытия на 1 зуб
         # коэффициенты прямой наклона левой грани зуба вала
@@ -543,16 +556,16 @@ class Spline100092:
     def join(self) -> str: return self.__join
 
     @property
-    def n_teeth(self): return int(self.__n_teeth)
+    def n_teeth(self) -> int: return int(self.__n_teeth)
 
     @property
-    def module(self): return self.__module
+    def module(self) -> float: return self.__module
 
     @property
-    def d(self): return self.__d
+    def d(self) -> float: return self.__d
 
     @property
-    def D(self): return self.__d
+    def D(self) -> float: return self.__d
     
     @property
     def df(self) -> float: return self.__df
@@ -568,6 +581,15 @@ class Spline100092:
 
     @property
     def gamma(self) -> float: return self.__gamma * (pi / 180)
+
+    @property
+    def circumferential_step(self) -> float: return self.__circumferential_step
+
+    @property
+    def resistance_moment(self) -> float:
+        """Момент сопротивления [1, с. 365]"""
+        return ((pi * self.df ** 4 - self.circumferential_step * self.n_teeth * (self.da - self.df) * (self.da + self.df) ** 2) /
+                (32 * self.da))
 
     @property
     def height(self) -> float:
@@ -589,7 +611,7 @@ class Spline100092:
     def show(self, **kwargs) -> None:
         """Визуализация сечения шлица"""
         mm = 1_000
-        df, Da, d, da, Df = self.df*mm, self.Da*mm, self.d * mm, self.da*mm, self.Df * mm
+        df, Da, d, da, Df = self.df * mm, self.Da * mm, self.d * mm, self.da * mm, self.Df * mm
 
         a = pi / self.n_teeth  # угол раскрытия на 1 зуб
         # коэффициенты прямой наклона левой грани зуба вала
@@ -735,6 +757,7 @@ def test():
 
     for spline, condition in zip(splines, conditions):
         print(spline)
+        print(f'{spline.resistance_moment = }')
         print(f'{spline.tension(**condition) = }')
         fitted_splines = Spline.fit(spline.standard, spline.join, 40 * 10 ** 6, **condition, safety=1)
         for fs in fitted_splines: print(fs)
