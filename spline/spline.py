@@ -173,6 +173,15 @@ class Spline1139:
         else:
             return f'b-{self.n_teeth:.0f}x{self.d * mm:.0f}x{self.D * mm:.0f}x{self.width * mm:.0f}'
 
+    def __setattr__(self, key, value):
+        """Создание только Python типов атрибутов"""
+        if isinstance(value, np.integer):
+            object.__setattr__(self, key, int(value))
+        elif isinstance (value, np.floating):
+            object.__setattr__(self, key, float(value))
+        else:
+            object.__setattr__(self, key, value)
+
     @property
     def standard(self) -> int: return self.__class__.__name__[6:]
 
@@ -335,6 +344,15 @@ class Spline6033:
         """Условное обозначение"""
         mm = 1_000  # перевод в мм
         return f'{self.D * mm:.0f}x{self.module * mm:.2f} ГОСТ {self.standard}-80'
+    
+    def __setattr__(self, key, value):
+        """Создание только Python типов атрибутов"""
+        if isinstance(value, np.integer):
+            object.__setattr__(self, key, int(value))
+        elif isinstance (value, np.floating):
+            object.__setattr__(self, key, float(value))
+        else:
+            object.__setattr__(self, key, value)
 
     @property
     def standard(self) -> int:
@@ -444,7 +462,7 @@ class Spline6033:
         return 0.1 * self.module
 
     @property
-    def resistance_moment(self):
+    def resistance_moment(self) -> float:
         """Момент сопротивления [1, с. 365]"""
         df = float(np.mean(self.df))
         return ((pi * df ** 4 - self.circumferential_step * self.n_teeth * (self.da - df) * (self.da + df) ** 2) /
@@ -549,6 +567,15 @@ class Spline100092:
     def __str__(self) -> str:
         return f'ОСТ {self.standard}-73'
 
+    def __setattr__(self, key, value):
+        """Создание только Python типов атрибутов"""
+        if isinstance(value, np.integer):
+            object.__setattr__(self, key, int(value))
+        elif isinstance (value, np.floating):
+            object.__setattr__(self, key, float(value))
+        else:
+            object.__setattr__(self, key, value)
+
     @property
     def standard(self) -> int: return self.__class__.__name__[6:]
 
@@ -620,6 +647,7 @@ class Spline100092:
         x_Da = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - Da ** 2 / 4))) / (1 + k ** 2)
         x_da = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - da ** 2 / 4))) / (1 + k ** 2)
         x_Df = (-k * b + sqrt((k * b) ** 2 - (1 + k ** 2) * (b ** 2 - Df ** 2 / 4))) / (1 + k ** 2)
+        if x_Df > 0: x_Df = 0
 
         plt.figure(figsize=kwargs.pop('figsize', (8, 8)))
         plt.suptitle(kwargs.pop('suptitle', 'Spline'), fontsize=16, fontweight='bold')
@@ -750,7 +778,7 @@ def test():
 
     if 100092:
         splines.append(Spline('100092', random.choice(('left', 'right')),
-                              n_teeth=40, module=0.5 / 1_000, d=20 / 1_000))
+                              n_teeth=40, module=0.4 / 1_000, d=16 / 1_000))
         conditions.append({'moment': random.randint(1, 200), 'length': random.randint(1, 80) / 1_000})
 
     print(STANDARDS.keys())
@@ -758,6 +786,7 @@ def test():
     for spline, condition in zip(splines, conditions):
         print(spline)
         print(f'{spline.resistance_moment = }')
+        print(f'{condition = }')
         print(f'{spline.tension(**condition) = }')
         fitted_splines = Spline.fit(spline.standard, spline.join, 40 * 10 ** 6, **condition, safety=1)
         for fs in fitted_splines: print(fs)
