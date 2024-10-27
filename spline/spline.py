@@ -446,7 +446,7 @@ class Spline6033:
     @property
     def resistance_moment(self):
         """Момент сопротивления [1, с. 365]"""
-        df = np.mean(self.df)
+        df = float(np.mean(self.df))
         return ((pi * df ** 4 - self.circumferential_step * self.n_teeth * (self.da - df) * (self.da + df) ** 2) /
                 (32 * self.da))
 
