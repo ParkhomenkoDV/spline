@@ -365,7 +365,7 @@ class Spline6033:
 
     @property
     def n_teeth(self) -> int:
-        return self.__n_teeth
+        return int(self.__n_teeth)
 
     @property
     def module(self) -> float:
