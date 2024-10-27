@@ -365,7 +365,7 @@ class Spline6033:
 
     @property
     def n_teeth(self) -> int:
-        return int(self.__n_teeth)
+        return self.__n_teeth
 
     @property
     def module(self) -> float:
@@ -398,7 +398,7 @@ class Spline6033:
     @property
     def main_circle_diameter(self) -> float:
         """Диаметр основной окружности"""
-        return self.module * self.n_teeth * cos(self.alpha)
+        return float(self.module * self.n_teeth * cos(self.alpha))
 
     @property
     def teeth_height_head(self) -> float:
@@ -418,7 +418,7 @@ class Spline6033:
     @property
     def nominal_pitch_circumferential_width(self) -> float:
         """Номинальная делительная окружная ширина впадины втулки / толщина зуба вала"""
-        return pi / 2 * self.module + 2 * self.original_contour_offset * tan(self.alpha)
+        return float(pi / 2 * self.module + 2 * self.original_contour_offset * tan(self.alpha))
 
     @property
     def nominal_diameter(self) -> float:
